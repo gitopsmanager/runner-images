@@ -93,17 +93,26 @@ A fork rebuilds on our schedule, on the same base, so yours keep up with ours.
 4. **Run it:** Actions → build-runner-images → Run workflow. After that it
    runs on the same schedule as ours.
 
-**A runner image of your own**, for example `runner-client-ci`:
+**A runner image of your own**, for example `runner-client-ci` with .NET
+added. Three files, made from the repo root:
 
-```
-images/runner-client-ci/
-  Dockerfile      copy one of ours, change the folder name in its mounts and the description
-  tools           e.g.  awscli kubectl helm yq python3 pyyaml dotnet
-images/local/tools/dotnet.tool
-```
+```bash
+# 1. The image's folder, with a copy of one of our Dockerfiles. The copy names
+#    its own folder in its bind mount, so rename that (and its comment) to the
+#    new folder.
+mkdir images/runner-client-ci
+cp images/runner-workflow-aws/Dockerfile images/runner-client-ci/
+sed -i 's/runner-workflow-aws/runner-client-ci/' images/runner-client-ci/Dockerfile
 
-```sh
-# images/local/tools/dotnet.tool
+# 2. Its tools file: the tools to install, by recipe name, separated by spaces
+#    or new lines. Each name needs a recipe: ours in images/common/tools/
+#    (awscli, kubectl, helm, yq, python3, pyyaml, ...) or yours in
+#    images/local/tools/ (dotnet, below).
+echo "awscli kubectl helm yq python3 pyyaml dotnet" > images/runner-client-ci/tools
+
+# 3. The recipe for the one tool we don't have.
+mkdir -p images/local/tools
+cat > images/local/tools/dotnet.tool <<'EOF'
 VERSION=9.0.100
 TYPE=tar
 URL="https://builds.dotnet.microsoft.com/dotnet/Sdk/${VERSION}/dotnet-sdk-${VERSION}-linux-x64.tar.gz"
@@ -111,7 +120,13 @@ SHA256=<sha256 of that file>
 INSTALL_DIR=/opt/dotnet
 BIN=dotnet
 CHECK="dotnet --version"
+EOF
 ```
+
+Then change the `description` label in the copied Dockerfile to say what your
+image is for. The build checks the download against `SHA256`, installs .NET
+into `/opt/dotnet` with `dotnet` on the PATH, and its smoke test runs
+`dotnet --version` and looks for `9.0.100`.
 
 Every `images/runner-*` folder is built, so that becomes
 `ghcr.io/<your org>/runner-client-ci`. Point an ARC runner set at it by
