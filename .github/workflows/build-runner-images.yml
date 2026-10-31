@@ -13,7 +13,7 @@
 # bump. Each run:
 #   1. moves the base to the newest actions/runner release at least 14 days
 #      old (the two-week rule in images/README.md), by tag and digest, in all
-#      four Dockerfiles, and commits that when it changed;
+#      Dockerfiles, and commits that when it changed;
 #   2. tags the commit it builds <YYYY.MM.DD>, so every published image has
 #      its source tagged;
 #   3. builds, smoke-tests and pushes from that tag;

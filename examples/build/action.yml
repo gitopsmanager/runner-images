@@ -27,7 +27,7 @@
 #   AZURE_IMAGE_REGISTRY     ACR, e.g. clientacr.azurecr.io
 #                            At least one. Both set: pushed to both.
 #   IMAGE_REPOSITORY_PREFIX  optional: repositories are <prefix>/<image>
-#                            (e.g. runners/runner-workflow-aws); none: <image>
+#                            (e.g. runners/runner-aws); none: <image>
 #   AWS_ECR_OIDC_ROLE_ARN    optional: push to ECR as this role through GitHub
 #                            OIDC instead of the runner's identity
 #   AZURE_ACR_OIDC_CLIENT_ID, AZURE_TENANT_ID

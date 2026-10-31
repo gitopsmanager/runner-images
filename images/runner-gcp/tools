@@ -1,5 +1,5 @@
 # Copyright (c) 2026 GitOps Manager, S.L.
 # SPDX-License-Identifier: Apache-2.0
-# The tools in runner-adhock-azure, by recipe name (common/tools/<name>.tool).
+# The tools in runner-gcp, by recipe name (common/tools/<name>.tool).
 # To add tools in a fork, list them in tools.local beside this file instead.
-azure-cli kubelogin kubectl yq
+tofu gcloud gke-gcloud-auth-plugin kubectl helm kustomize yq python3 pyyaml

@@ -1,5 +1,0 @@
-# Copyright (c) 2026 GitOps Manager, S.L.
-# SPDX-License-Identifier: Apache-2.0
-# The tools in runner-workflow-azure, by recipe name (common/tools/<name>.tool).
-# To add tools in a fork, list them in tools.local beside this file instead.
-tofu azure-cli kubelogin kubectl helm kustomize yq python3 pyyaml

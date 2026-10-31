@@ -1,6 +1,7 @@
 # Copyright (c) 2026 GitOps Manager, S.L.
 # SPDX-License-Identifier: Apache-2.0
-# runner-workflow-azure: long Azure workflows (OpenTofu create, Helm installs), run on Container Apps jobs.
+# runner-azure: every Azure workflow on one image: long ones (OpenTofu creates, Helm
+# installs) and short GUI commands (AddHock), on CodeBuild, Container Apps jobs or ARC.
 #
 # Built by .github/workflows/build-runner-images.yml with images/ as the
 # build context; images/README.md says what each image is for and how to
@@ -16,7 +17,7 @@ FROM ghcr.io/actions/actions-runner:2.338.0@sha256:4ffadc0002b2581327e06101fc8c0
 # The source label links the GHCR package to this repo, which is what lets the
 # workflow's GITHUB_TOKEN push to it and prune old versions.
 LABEL org.opencontainers.image.source="https://github.com/gitopsmanager/runner-images" \
-      org.opencontainers.image.description="GitOps Manager workflow runner, Azure"
+      org.opencontainers.image.description="GitOps Manager runner, Azure"
 
 # Root only to install, system-wide. The scripts, recipes and lists are
 # bind-mounted rather than copied, so no layer keeps them. The tools are
@@ -25,7 +26,7 @@ LABEL org.opencontainers.image.source="https://github.com/gitopsmanager/runner-i
 USER root
 RUN --mount=type=bind,source=common,target=/tmp/gom-common \
     --mount=type=bind,source=local,target=/tmp/gom-local \
-    --mount=type=bind,source=runner-workflow-azure,target=/tmp/gom-image \
+    --mount=type=bind,source=runner-azure,target=/tmp/gom-image \
     bash /tmp/gom-common/install-tools.sh --local /tmp/gom-local \
       --list /tmp/gom-image/tools --list-if-present /tmp/gom-image/tools.local
 USER runner

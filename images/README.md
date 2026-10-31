@@ -11,25 +11,20 @@ one image at a time through
 > checked against the release files and the installer was run locally (see
 > [Tested](#tested)); the first run of the workflow is the first build.
 
-| Image | Kind | Runs on | Tools |
-|---|---|---|---|
-| `runner-workflow-aws` | Long-running, AWS | CodeBuild | OpenTofu, AWS CLI v2, kubectl, Helm, kustomize, yq, crane, python3 + PyYAML |
-| `runner-workflow-azure` | Long-running, Azure | Container Apps jobs | OpenTofu, Azure CLI, kubelogin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
-| `runner-workflow-gcp` | Long-running, Google Cloud | Not chosen yet | OpenTofu, Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
-| `runner-adhock-aws` | Short commands, AWS | An always-on runner | AWS CLI v2, kubectl, yq |
-| `runner-adhock-azure` | Short commands, Azure | An always-on runner | Azure CLI, kubelogin, kubectl, yq |
-| `runner-adhock-gcp` | Short commands, Google Cloud | An always-on runner | Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, yq |
+| Image | Runs on | Tools |
+|---|---|---|
+| `runner-aws` | CodeBuild (long workflows), ARC (GUI commands) | OpenTofu, AWS CLI v2, kubectl, Helm, kustomize, yq, crane, python3 + PyYAML |
+| `runner-azure` | Container Apps jobs (long workflows), ARC (GUI commands) | OpenTofu, Azure CLI, kubelogin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
+| `runner-gcp` | Not chosen yet | OpenTofu, Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
 
-**Long-running** (`runner-workflow-*`): workflows that can take many
-minutes, like creating a cluster with OpenTofu or installing with Helm. They
-carry the full toolset. **Short commands** (`runner-adhock-*`): quick AddHock
-commands from the GUI on an always-on runner.
+One image per cloud serves every workflow there: long ones (OpenTofu creates,
+Helm installs) and short commands from the GUI (AddHock) on an always-on
+runner. There used to be a lighter image for the short commands, without
+OpenTofu and Helm; it saved under 10%, because GitHub's runner base is most of
+each image (about 540 MB of 700 to 800 MB to download), so it went.
 
 Every image also has jq, git, curl, unzip and bash from the base image. The
 exact list is each image's `tools` file.
-
-The AddHock images are lean on purpose: an always-on runner is pulled to
-every node it lands on, and AddHock never runs OpenTofu or Helm.
 
 ## The base
 
@@ -115,7 +110,7 @@ release named by its date, with each image's digest in its notes and in
 
 ```bash
 gh release download --repo gitopsmanager/runner-images --pattern images.json
-docker pull ghcr.io/gitopsmanager/runner-workflow-aws@sha256:<digest from images.json>
+docker pull ghcr.io/gitopsmanager/runner-aws@sha256:<digest from images.json>
 ```
 
 or put the same `image@sha256:...` reference in the CodeBuild project, the

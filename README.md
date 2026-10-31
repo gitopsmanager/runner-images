@@ -13,23 +13,19 @@ GHCR as `ghcr.io/gitopsmanager/<image>`. Part of
 > are never patched once published, so move to the newest release at least
 > monthly ([Security](#security-use-the-newest-release)).
 
-There are two kinds of image, one of each for every cloud:
-
-- **Long-running** (`runner-workflow-*`): workflows that can take many
-  minutes, such as creating a cluster with OpenTofu or installing with Helm.
-  They carry the full toolset.
-- **Short commands** (`runner-adhock-*`): quick AddHock commands from the GUI,
-  on a runner that is always on. They are lean on purpose, with no OpenTofu or
-  Helm, since an always-on runner is pulled to every node it lands on.
+One image per cloud, for every workflow there: long ones that can take many
+minutes, such as creating a cluster with OpenTofu or installing with Helm, and
+short commands from the GUI on an always-on runner.
 
 | Image | For |
 |---|---|
-| `runner-workflow-aws` | Long-running, AWS |
-| `runner-workflow-azure` | Long-running, Azure |
-| `runner-workflow-gcp` | Long-running, Google Cloud |
-| `runner-adhock-aws` | Short commands, AWS |
-| `runner-adhock-azure` | Short commands, Azure |
-| `runner-adhock-gcp` | Short commands, Google Cloud |
+| `runner-aws` | AWS |
+| `runner-azure` | Azure |
+| `runner-gcp` | Google Cloud |
+
+Most of each image is GitHub's runner base (about 540 MB to download of 700 to
+800); the tools add the rest. A lighter image for short commands alone saved
+under 10%, so there is one per cloud.
 
 What is in each, the pins and how they are checked, the build schedule and
 tagging: [images/README.md](images/README.md). The build:
@@ -58,7 +54,7 @@ To subscribe you need to be signed in to AWS Marketplace with the AWS account
 you want to buy from; the subscription is billed to that account.
 
 Use the images, build on them, but don't change them, and don't reuse their
-names (`runner-workflow-*`, `runner-adhock-*`) for images of your own: the
+names (`runner-aws`, `runner-azure`, `runner-gcp`) for images of your own: the
 service expects what is in them. Everything below adds to them without
 touching them.
 
@@ -102,8 +98,8 @@ added. Three files, made from the repo root:
 #    its own folder in its bind mount, so rename that (and its comment) to the
 #    new folder.
 mkdir images/runner-client-ci
-cp images/runner-workflow-aws/Dockerfile images/runner-client-ci/
-sed -i 's/runner-workflow-aws/runner-client-ci/' images/runner-client-ci/Dockerfile
+cp images/runner-aws/Dockerfile images/runner-client-ci/
+sed -i 's/runner-aws/runner-client-ci/' images/runner-client-ci/Dockerfile
 
 # 2. Its tools file: the tools to install, by recipe name, separated by spaces
 #    or new lines. Each name needs a recipe: ours in images/common/tools/

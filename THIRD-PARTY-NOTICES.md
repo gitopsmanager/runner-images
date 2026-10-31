@@ -11,19 +11,19 @@ and the base digest in each Dockerfile; each recipe in
 |---|---|---|---|
 | GitHub Actions runner image (`ghcr.io/actions/actions-runner`) and the runner agent | all images (the base) | MIT | https://github.com/actions/runner |
 | Ubuntu 24.04 and its packages | all images (from the base) | various; each package's terms are in `/usr/share/doc/<package>/copyright` in the image | https://ubuntu.com |
-| OpenTofu | `runner-workflow-*` | MPL-2.0 | https://github.com/opentofu/opentofu |
+| OpenTofu | all images | MPL-2.0 | https://github.com/opentofu/opentofu |
 | kubectl (Kubernetes) | all images | Apache-2.0 | https://github.com/kubernetes/kubernetes |
-| Helm | `runner-workflow-*` | Apache-2.0 | https://github.com/helm/helm |
-| kustomize | `runner-workflow-*` | Apache-2.0 | https://github.com/kubernetes-sigs/kustomize |
+| Helm | all images | Apache-2.0 | https://github.com/helm/helm |
+| kustomize | all images | Apache-2.0 | https://github.com/kubernetes-sigs/kustomize |
 | yq | all images | MIT | https://github.com/mikefarah/yq |
-| crane (go-containerregistry) | `runner-workflow-aws` | Apache-2.0 | https://github.com/google/go-containerregistry |
-| AWS CLI v2 | `*-aws` | Apache-2.0 (its bundled components' licences ship in its install folder, `/usr/local/aws-cli`) | https://github.com/aws/aws-cli |
-| Azure CLI | `*-azure` | MIT | https://github.com/Azure/azure-cli |
-| kubelogin | `*-azure` | MIT | https://github.com/Azure/kubelogin |
-| Google Cloud CLI | `*-gcp` | Apache-2.0 (its own terms and bundled components: `/usr/share/google-cloud-sdk/LICENSE`, `/usr/share/doc/google-cloud-cli/copyright`) | https://cloud.google.com/sdk |
-| gke-gcloud-auth-plugin | `*-gcp` | Apache-2.0 | https://cloud.google.com/sdk |
-| Python 3 | `runner-workflow-*` | PSF-2.0 (Ubuntu package) | https://www.python.org |
-| PyYAML | `runner-workflow-*` | MIT (Ubuntu package) | https://github.com/yaml/pyyaml |
+| crane (go-containerregistry) | `runner-aws` | Apache-2.0 | https://github.com/google/go-containerregistry |
+| AWS CLI v2 | `runner-aws` | Apache-2.0 (its bundled components' licences ship in its install folder, `/usr/local/aws-cli`) | https://github.com/aws/aws-cli |
+| Azure CLI | `runner-azure` | MIT | https://github.com/Azure/azure-cli |
+| kubelogin | `runner-azure` | MIT | https://github.com/Azure/kubelogin |
+| Google Cloud CLI | `runner-gcp` | Apache-2.0 (its own terms and bundled components: `/usr/share/google-cloud-sdk/LICENSE`, `/usr/share/doc/google-cloud-cli/copyright`) | https://cloud.google.com/sdk |
+| gke-gcloud-auth-plugin | `runner-gcp` | Apache-2.0 | https://cloud.google.com/sdk |
+| Python 3 | all images | PSF-2.0 (Ubuntu package) | https://www.python.org |
+| PyYAML | all images | MIT (Ubuntu package) | https://github.com/yaml/pyyaml |
 
 **OpenTofu (MPL-2.0):** included unmodified, as released; its source is at the
 link above for the version in `versions.env`.
