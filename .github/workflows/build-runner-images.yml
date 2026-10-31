@@ -113,6 +113,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The commit and the annotated tag both need an author, whether or not
+      # the base changed.
+      - name: Git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
       - name: Newest runner release at least 14 days old
         id: pick
         env:
@@ -152,8 +159,6 @@ jobs:
             sed -i "s|^FROM ghcr.io/actions/actions-runner:.*|FROM $BASE|" "$f"
           done
           [ "$(grep -h '^FROM ' images/*/Dockerfile | sort -u)" = "FROM $BASE" ] || { echo "::error::A Dockerfile's FROM line was not updated"; exit 1; }
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -q -am "Base: ${BASE%@*}" -m "From ${current#FROM }"
           git push -q origin HEAD:main
           echo "Moved from ${current#FROM } to $BASE" >> "$GITHUB_STEP_SUMMARY"
