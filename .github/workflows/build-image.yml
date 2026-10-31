@@ -6,8 +6,9 @@
 # update, the tag, the release -- is that workflow's.
 #
 # A fork should NOT edit this file (it changes here, so edits would conflict
-# on a sync). To build on its own runners into its own registry, a fork edits
-# build-image.local.yml instead and sets BUILD_IMAGE=local. Both files take
+# on a sync). To build on its own runners into its own registry, a fork copies
+# examples/build-image.local.yml to .github/workflows/build-image.local.yml,
+# edits that, and sets BUILD_IMAGE=local. Both files take
 # the same inputs and give back the same thing: an artifact named
 # digest-<image> holding {"<image>": "<registry>/<image>@sha256:..."}.
 #

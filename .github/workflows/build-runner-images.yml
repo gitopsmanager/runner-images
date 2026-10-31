@@ -187,8 +187,8 @@ jobs:
   #   not set  build-image.yml: GitHub's runners, GHCR (this repo, and any fork
   #            that keeps it)
   #   local    build-image.local.yml: a fork's own build, its runners and
-  #            registry. That file is created once here and never changed
-  #            again, so a fork's edits to it never conflict on a sync.
+  #            registry -- its copy of examples/build-image.local.yml. This
+  #            repo has no such file, so a fork's copy never conflicts.
   # Exactly one of the two jobs runs; the other is skipped.
   build:
     needs: [decide, base]

@@ -89,7 +89,7 @@ A fork rebuilds on our schedule, on the same base, so yours keep up with ours.
    | Pin its version | `images/local/versions.env` (read after ours) |
    | Add an Ubuntu package | a recipe with `TYPE=apt`, `PACKAGES="name=version"` (a version in the pinned snapshot) |
    | Make a runner image of your own | a folder `images/runner-<yourorg>-<name>/` (below) |
-   | Build on your own runners, into your own registry | your build in `.github/workflows/build-image.local.yml`, and `BUILD_IMAGE=local` (below) |
+   | Build on your own runners, into your own registry | a copy of `examples/build-image.local.yml` at `.github/workflows/build-image.local.yml`, and `BUILD_IMAGE=local` (below) |
 
 4. **Run it:** Actions → build-runner-images → Run workflow. After that it
    runs on the same schedule as ours.
@@ -134,21 +134,42 @@ Every `images/runner-*` folder is built, so that becomes
 digest.
 
 **Build on your own self-hosted runners, into your own registry** (ECR, ACR,
-Artifact Registry): edit
-[`build-image.local.yml`](.github/workflows/build-image.local.yml) and set the
-repository variable `BUILD_IMAGE=local`. Without the variable, our
-[`build-image.yml`](.github/workflows/build-image.yml) builds on GitHub's
-runners into GHCR; with it, your file builds instead. We create
-`build-image.local.yml` once and never change it, so your edits never conflict
-on a sync -- don't edit `build-image.yml`, which we do change.
+Artifact Registry): copy the example into place, and set the repository
+variable `BUILD_IMAGE=local`:
 
-In it: your `runs-on`, your build action (for example
-`gitopsmanager/multicloud-build-action`, which signs in to ECR or ACR with the
-runner's own identity and builds through its BuildKit), your registry. Keep
-its inputs, and give back what the release needs: an artifact `digest-<image>`
-holding `{"<image>": "<registry>/<image>@sha256:..."}`. The smoke test is
-inside each Dockerfile, so your build runs it too, with no Docker daemon
-needed.
+```bash
+cp examples/build-image.local.yml .github/workflows/build-image.local.yml
+```
+
+Without the variable, our [`build-image.yml`](.github/workflows/build-image.yml)
+builds on GitHub's runners into GHCR; with it, your copy builds instead. This
+repo has no `.github/workflows/build-image.local.yml` and never changes the
+example, so your copy never conflicts on a sync -- don't edit
+`build-image.yml`, which we do change.
+
+As shipped, it builds with
+[`multicloud-build-action`](https://github.com/gitopsmanager/multicloud-build-action):
+on a self-hosted runner it builds through the runner's BuildKit, with no
+Docker daemon needed, and signs in to ECR and ACR with the runner's own
+identity (EKS Pod Identity, or the AKS managed identity). Set it up with
+repository variables:
+
+| Variable | |
+|---|---|
+| `BUILD_IMAGE` | `local`, to use this build instead of ours |
+| `RUNNER_LABELS` | the runner to build on: a label or a JSON list (default `["self-hosted"]`) |
+| `AWS_IMAGE_REGISTRY` | ECR, e.g. `111122223333.dkr.ecr.eu-west-1.amazonaws.com` |
+| `AZURE_IMAGE_REGISTRY` | ACR, e.g. `clientacr.azurecr.io` (at least one of the two; both set pushes to both) |
+| `IMAGE_REPOSITORY_PREFIX` | optional: repositories are `<prefix>/<image>` |
+| `AWS_ECR_OIDC_ROLE_ARN` | optional: push to ECR through GitHub OIDC instead of the runner's identity |
+| `AZURE_ACR_OIDC_CLIENT_ID`, `AZURE_TENANT_ID` | optional: the same for ACR |
+
+ECR needs each repository to exist first; ACR makes them on the first push.
+Nothing prunes old images there: keep the newest few with the registry's own
+rule (an ECR lifecycle policy, ACR retention). Or change the file however you
+like; whatever it does, it must give back what the release needs: an artifact
+`digest-<image>` holding `{"<image>": "<registry>/<image>@sha256:..."}`. The
+smoke test is inside each Dockerfile, so your build runs it too.
 
 The base update commits to your fork's `main`, as it does to ours; both make
 the same change, so syncing usually merges it cleanly.
