@@ -106,6 +106,10 @@ two builds a month) and deletes older ones. **Anything pinned to an older
 digest stops pulling** once that version is deleted, so move clients forward
 within three months. Manual runs count too, so each one shortens that window.
 
+**Published images are never patched.** Security fixes reach you only by
+moving to a newer build (see "Security" in the repo README): use the newest
+release, at least monthly.
+
 ## Bumping a version
 
 **A tool:**

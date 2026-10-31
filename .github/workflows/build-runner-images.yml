@@ -336,6 +336,8 @@ jobs:
             cat "$RUNNER_TEMP/table.md"
             echo
             echo "Pin an image by its digest. The same digests, for scripts: \`images.json\` below. Tools and their versions: \`images/common/versions.env\` at this tag."
+            echo
+            echo "> **These images are never patched.** Security fixes come only in newer builds, about every 15 days. Move to the newest release at least monthly. Each image keeps its 6 newest builds (about 3 months); older digests are deleted and can no longer be pulled."
           } > "$RUNNER_TEMP/notes.md"
           if gh release view "$DATE_TAG" --repo "$REPO" >/dev/null 2>&1; then
             gh release edit "$DATE_TAG" --repo "$REPO" --notes-file "$RUNNER_TEMP/notes.md"
