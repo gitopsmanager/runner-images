@@ -7,3 +7,6 @@ SHA256=$HELM_SHA256
 MEMBER=linux-amd64/helm
 CHECK="helm version --short"
 EXPECT="v$VERSION"
+LICENSE_ID=Apache-2.0
+LICENSE_MEMBER=linux-amd64/LICENSE
+SOURCE=https://github.com/helm/helm

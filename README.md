@@ -117,13 +117,18 @@ SHA256=<sha256 of that file>
 INSTALL_DIR=/opt/dotnet
 BIN=dotnet
 CHECK="dotnet --version"
+LICENSE_ID=MIT
+LICENSE_MEMBER="LICENSE.txt ThirdPartyNotices.txt"
+SOURCE=https://github.com/dotnet/sdk
 EOF
 ```
 
 Then change the `description` label in the copied Dockerfile to say what your
 image is for. The build checks the download against `SHA256`, installs .NET
-into `/opt/dotnet` with `dotnet` on the PATH, and its smoke test runs
-`dotnet --version` and looks for `9.0.100`.
+into `/opt/dotnet` with `dotnet` on the PATH, copies its licence texts into
+the image's `licenses/dotnet/`, and its smoke test runs `dotnet --version` and
+looks for `9.0.100`. Every recipe needs its licence (`LICENSE_*`): the build
+stops without one.
 
 Every `images/runner-*` folder is built, so that becomes
 `ghcr.io/<your org>/runner-client-ci`. Point an ARC runner set at it by

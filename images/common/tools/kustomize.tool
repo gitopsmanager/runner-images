@@ -6,3 +6,7 @@ URL="https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F
 SHA256=$KUSTOMIZE_SHA256
 CHECK="kustomize version"
 EXPECT="v$VERSION"
+LICENSE_ID=Apache-2.0
+LICENSE_URL="https://raw.githubusercontent.com/kubernetes-sigs/kustomize/kustomize/v${VERSION}/LICENSE"
+LICENSE_SHA256=$KUSTOMIZE_LICENSE_SHA256
+SOURCE=https://github.com/kubernetes-sigs/kustomize

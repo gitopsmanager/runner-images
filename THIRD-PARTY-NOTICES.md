@@ -7,6 +7,12 @@ Versions are the pins in [`images/common/versions.env`](images/common/versions.e
 and the base digest in each Dockerfile; each recipe in
 [`images/common/tools/`](images/common/tools/) gives the exact download.
 
+**Inside each image:** every tool's licence text is in
+`/usr/local/share/gom/licenses/<tool>/`, with an index of the tools, their
+versions, licences and sources in `/usr/local/share/gom/licenses/README.md`.
+The base image's Ubuntu packages keep theirs in
+`/usr/share/doc/<package>/copyright`.
+
 | Component | In | Licence | Source |
 |---|---|---|---|
 | GitHub Actions runner image (`ghcr.io/actions/actions-runner`) and the runner agent | all images (the base) | MIT | https://github.com/actions/runner |

@@ -48,6 +48,14 @@ while IFS=$'\t' read -r tool version cmd checkline expect; do
   esac
 done < "$manifest"
 
+# Every tool's licence text came with it (install-tools.sh stops without one).
+licenses=/usr/local/share/gom/licenses
+if [ -s "$licenses/README.md" ]; then
+  echo "ok   licences: $(find "$licenses" -mindepth 2 -type f | wc -l) texts, index $licenses/README.md"
+else
+  echo "FAIL licences: no index at $licenses/README.md"; fail=1
+fi
+
 for tool in jq git curl bash; do
   check "$tool" "" "$tool --version"
 done

@@ -16,6 +16,12 @@
 # Writes /usr/local/share/gom/tools.txt, one tab-separated line per tool --
 # name, version, command, check, expected -- which smoke-test.sh runs and
 # which tells anyone holding the image what's in it.
+#
+# And each tool's licence text, in /usr/local/share/gom/licenses/<tool>/,
+# with an index (licenses/README.md): a file from the download
+# (LICENSE_MEMBER), a pinned download (LICENSE_URL, LICENSE_SHA256), or a
+# file the package installed (LICENSE_FILES). The images redistribute these
+# tools, and their licences ask for the text to go with them.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -50,7 +56,8 @@ trap 'rm -rf "$tmp"' EXIT
 prefix=${GOM_PREFIX:-/usr/local}
 bin=$prefix/bin
 manifest=$prefix/share/gom/tools.txt
-mkdir -p "$bin" "$(dirname "$manifest")"
+licenses=$prefix/share/gom/licenses
+mkdir -p "$bin" "$(dirname "$manifest")" "$licenses"
 
 # fetch <url> <sha256> <file>: download, then refuse anything whose hash
 # isn't the pinned one.
@@ -63,6 +70,17 @@ fetch() {
 # the end, from the pinned snapshot.
 apt_pkgs=()
 apt_add() { apt_pkgs+=("$@"); }
+
+# lic_add <tool> <file>: a licence text into licenses/<tool>/, under its own
+# name. Recipes of TYPE=script call it for files only they know about.
+lic_add() {
+  [ -s "$2" ] || { echo "install-tools.sh: $1: licence file $2 is missing or empty" >&2; exit 2; }
+  mkdir -p "$licenses/$1"
+  cp "$2" "$licenses/$1/$(basename "$2")"
+}
+# Installed files can only be copied once apt has run.
+lic_later=()
+lic_index=()
 
 recipe_for() {
   local name=$1 found=""
@@ -82,7 +100,8 @@ for tool in "${tools[@]}"; do
   recipe=$(recipe_for "$tool")
 
   # Each recipe starts from nothing.
-  unset VERSION TYPE URL SHA256 BIN MEMBER INSTALL_DIR STRIP PACKAGES CMD CHECK EXPECT
+  unset VERSION TYPE URL SHA256 BIN MEMBER INSTALL_DIR STRIP PACKAGES CMD CHECK EXPECT \
+        LICENSE_ID LICENSE_URL LICENSE_SHA256 LICENSE_MEMBER LICENSE_FILES SOURCE
   unset -f install_tool 2>/dev/null || true
   # shellcheck disable=SC1090
   . "$recipe"
@@ -105,6 +124,7 @@ for tool in "${tools[@]}"; do
       else
         unzip -q "$tmp/$tool.archive" -d "$tmp/$tool.x"
       fi
+      for m in ${LICENSE_MEMBER:-}; do lic_add "$tool" "$tmp/$tool.x/$m"; done
       if [ -n "${INSTALL_DIR:-}" ]; then
         # The whole archive into its own folder, its command linked onto the PATH.
         rm -rf "$INSTALL_DIR" && mkdir -p "$(dirname "$INSTALL_DIR")"
@@ -138,6 +158,16 @@ for tool in "${tools[@]}"; do
       exit 2
       ;;
   esac
+  # The licence text: a pinned download, and/or installed files (after apt).
+  if [ -n "${LICENSE_URL:-}" ]; then
+    : "${LICENSE_SHA256:?$recipe: LICENSE_URL needs LICENSE_SHA256}"
+    fetch "$LICENSE_URL" "$LICENSE_SHA256" "$tmp/$tool.license"
+    mkdir -p "$licenses/$tool"
+    cp "$tmp/$tool.license" "$licenses/$tool/$(basename "$LICENSE_URL")"
+  fi
+  for f in ${LICENSE_FILES:-}; do lic_later+=("$tool $f"); done
+  lic_index+=("$(printf '| %s | %s | %s | %s |' "$tool" "$VERSION" "${LICENSE_ID:-see licenses/$tool}" "${SOURCE:-}")")
+
   printf '%s\t%s\t%s\t%s\t%s\n' "$tool" "$VERSION" "$CMD" "$CHECK" "$EXPECT" >> "$manifest"
 done
 
@@ -163,6 +193,34 @@ EOF
   DEBIAN_FRONTEND=noninteractive apt-get "${apt_opts[@]}" install -y --no-install-recommends "${apt_pkgs[@]}"
   apt-get clean
 fi
+
+for entry in "${lic_later[@]}"; do lic_add "${entry%% *}" "${entry#* }"; done
+
+# Every tool must have its licence text with it.
+for tool in "${!seen[@]}"; do
+  [ -n "$(ls -A "$licenses/$tool" 2>/dev/null)" ] || {
+    echo "install-tools.sh: $tool: no licence text (set LICENSE_MEMBER, LICENSE_URL or LICENSE_FILES in its recipe)" >&2
+    exit 2
+  }
+done
+
+# The index, kept with the texts. Added to, so an image that runs the
+# installer twice keeps both lists.
+index=$licenses/README.md
+if [ ! -f "$index" ]; then
+  cat > "$index" <<'EOF'
+# Third-party software in this image
+
+The base, GitHub's runner image (ghcr.io/actions/actions-runner: MIT,
+https://github.com/actions/runner), and its Ubuntu packages: each package's
+terms are in /usr/share/doc/<package>/copyright. The tools added on top, each
+with its licence text in licenses/<tool>/:
+
+| Tool | Version | Licence | Source |
+|---|---|---|---|
+EOF
+fi
+printf '%s\n' "${lic_index[@]}" >> "$index"
 
 sort -u -o "$manifest" "$manifest"
 echo "Installed:"

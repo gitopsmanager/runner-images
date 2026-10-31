@@ -6,3 +6,6 @@ TYPE=apt
 PACKAGES="python3-yaml=$PYYAML_DEB_VERSION"
 CMD=-
 CHECK="python3 -c 'import yaml; print(yaml.__version__)'"
+LICENSE_ID=MIT
+LICENSE_FILES=/usr/share/doc/python3-yaml/copyright
+SOURCE=https://github.com/yaml/pyyaml

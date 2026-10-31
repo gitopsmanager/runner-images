@@ -7,3 +7,6 @@ URL="https://packages.microsoft.com/repos/azure-cli/pool/main/a/azure-cli/azure-
 SHA256=$AZURE_CLI_SHA256
 CMD=az
 CHECK="az version --output tsv"
+LICENSE_ID=MIT
+LICENSE_FILES=/usr/share/doc/azure-cli/copyright
+SOURCE=https://github.com/Azure/azure-cli

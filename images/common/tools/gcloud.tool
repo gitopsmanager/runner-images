@@ -7,3 +7,6 @@ URL="https://packages.cloud.google.com/apt/${GCLOUD_DEB}"
 SHA256=$GCLOUD_SHA256
 CHECK="gcloud version"
 EXPECT="Google Cloud SDK $VERSION"
+LICENSE_ID=Apache-2.0
+LICENSE_FILES="/usr/share/google-cloud-sdk/LICENSE /usr/share/doc/google-cloud-cli/copyright"
+SOURCE=https://cloud.google.com/sdk

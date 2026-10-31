@@ -7,3 +7,6 @@ TYPE=deb
 URL="https://packages.cloud.google.com/apt/${GKE_AUTH_PLUGIN_DEB}"
 SHA256=$GKE_AUTH_PLUGIN_SHA256
 EXPECT=""
+LICENSE_ID=Apache-2.0
+LICENSE_FILES=/usr/share/doc/google-cloud-cli-gke-gcloud-auth-plugin/copyright
+SOURCE=https://cloud.google.com/sdk

@@ -6,3 +6,6 @@ URL="https://github.com/opentofu/opentofu/releases/download/v${VERSION}/tofu_${V
 SHA256=$OPENTOFU_SHA256
 CHECK="tofu version"
 EXPECT="v$VERSION"
+LICENSE_ID=MPL-2.0
+LICENSE_MEMBER=LICENSE
+SOURCE=https://github.com/opentofu/opentofu

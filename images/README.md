@@ -47,7 +47,7 @@ current. The workflow fails if their base `FROM` lines differ.
 | `<image>/tools` | The tools in that image, by recipe name |
 | `common/tools/<tool>.tool` | **How each tool is installed**: where from, what kind of file, how to check it. Format: [`common/tools/README.md`](common/tools/README.md) |
 | `common/versions.env` | **Every tool version and SHA256**, with where each checksum came from |
-| `common/install-tools.sh` | Runs the recipes: downloads, checks each SHA256, installs system-wide, writes `/usr/local/share/gom/tools.txt` |
+| `common/install-tools.sh` | Runs the recipes: downloads, checks each SHA256, installs system-wide, writes `/usr/local/share/gom/tools.txt`, and puts each tool's licence text in `/usr/local/share/gom/licenses/` |
 | `common/smoke-test.sh` | Run inside every build: the user is `runner`, and every tool answers its recipe's check |
 | `common/build-day.sh`, `common/test-build-day.sh` | The schedule rule, and its test |
 | `local/` | **A fork's own** recipes and pins. This repo never writes there (see the repo README, "Your own images") |
@@ -203,8 +203,17 @@ and change the base `FROM` line in **every** Dockerfile.
 - **Both workflows** parse as YAML; the release's digest lookup and the
   14-day runner pick were run live against GitHub and GHCR.
 
+31 Oct 2026, later:
+
+- **The first build in GitHub Actions passed**, so every recipe type
+  (`bin`, `tar`, `zip`, `deb`, `apt`, `script`), the snapshot apt sources and
+  the smoke test inside the build are proven.
+- **Licence texts** (installer run locally): the seven `bin`, `tar` and `zip`
+  tools' texts were taken from their archives or fetched at their release
+  tags and checked; the index was written; a recipe with no licence stopped
+  the build (exit 2).
+
 **Not tested:**
-- **Building any image**, so the `script`, `deb` and `apt` recipes (the AWS
-  CLI installer, the Azure and Google `.deb`s, the snapshot apt sources) and
-  `smoke-test.sh` are unproven.
-- Anything in GitHub Actions: the build, push, release and pruning.
+- The licence copies for the `deb`, `apt` and `script` tools (the packages'
+  `copyright` files, the AWS CLI's), until the next build.
+- Pruning, until there are more than six versions.

@@ -6,3 +6,7 @@ URL="https://github.com/Azure/kubelogin/releases/download/v${VERSION}/kubelogin-
 SHA256=$KUBELOGIN_SHA256
 MEMBER=bin/linux_amd64/kubelogin
 EXPECT="v$VERSION"
+LICENSE_ID=MIT
+LICENSE_URL="https://raw.githubusercontent.com/Azure/kubelogin/v${VERSION}/LICENSE"
+LICENSE_SHA256=$KUBELOGIN_LICENSE_SHA256
+SOURCE=https://github.com/Azure/kubelogin
