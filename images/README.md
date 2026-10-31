@@ -3,60 +3,75 @@
 
 Container images for the runners that run GitOps Manager workflows. They're
 built and pushed to GHCR by
-[`build-runner-images.yml`](../.github/workflows/build-runner-images.yml).
+[`build-runner-images.yml`](../.github/workflows/build-runner-images.yml),
+one image at a time through
+[`build-image.yml`](../.github/workflows/build-image.yml).
 
-> **Status: first draft, 29 Oct 2026. None of these images has been built
-> yet.** They couldn't be built where they were written. The pins and
-> checksums were checked against the release files (see [Tested](#tested)).
-> The first run of the workflow will be the first build.
+> **Status: not yet built in GitHub Actions.** The pins and checksums were
+> checked against the release files and the installer was run locally (see
+> [Tested](#tested)); the first run of the workflow is the first build.
 
 | Image | Runs | Tools |
 |---|---|---|
-| `runner-workflow-aws` | Long workflows (OpenTofu create, Helm installs) on CodeBuild | OpenTofu, AWS CLI v2, kubectl, Helm, kustomize, yq, python3 + PyYAML |
+| `runner-workflow-aws` | Long workflows (OpenTofu create, Helm installs) on CodeBuild | OpenTofu, AWS CLI v2, kubectl, Helm, kustomize, yq, crane, python3 + PyYAML |
 | `runner-workflow-azure` | Long workflows on Container Apps jobs | OpenTofu, Azure CLI, kubelogin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
+| `runner-workflow-gcp` | Long workflows on Google Cloud | OpenTofu, Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
 | `runner-adhock-aws` | AddHock (short GUI commands) on an always-on runner | AWS CLI v2, kubectl, yq |
 | `runner-adhock-azure` | AddHock on an always-on runner | Azure CLI, kubelogin, kubectl, yq |
+| `runner-adhock-gcp` | AddHock on an always-on runner | Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, yq |
 
-All four also have jq, git, curl, unzip and bash from the base image.
+Every image also has jq, git, curl, unzip and bash from the base image. The
+exact list is each image's `tools` file.
 
 The AddHock images are lean on purpose: an always-on runner is pulled to
 every node it lands on, and AddHock never runs OpenTofu or Helm.
 
 ## The base
 
-All four are built on the official GitHub Actions runner image,
+Every image is built on the official GitHub Actions runner image,
 `ghcr.io/actions/actions-runner`, pinned by tag **and** digest. That gives
 Ubuntu 24.04, the non-root user `runner` (uid 1001) the images run as, and
 the runner agent.
 
 - **CodeBuild** brings its own runner agent and ignores this one.
-- **Container Apps jobs** use the one in the image.
+- **Container Apps jobs** and ARC use the one in the image.
 
-The same base is still used for all four so there's one toolchain to keep
-current. The workflow fails if the four `FROM` lines differ.
+The same base is used for all of them so there's one toolchain to keep
+current. The workflow fails if their base `FROM` lines differ.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `<image>/Dockerfile` | The base pin, and which tools to install |
+| `<image>/Dockerfile` | The base pin; the install; the smoke-test stage |
+| `<image>/tools` | The tools in that image, by recipe name |
+| `common/tools/<tool>.tool` | **How each tool is installed**: where from, what kind of file, how to check it. Format: [`common/tools/README.md`](common/tools/README.md) |
 | `common/versions.env` | **Every tool version and SHA256**, with where each checksum came from |
-| `common/install-tools.sh` | Downloads each tool from its official release URL, checks the SHA256, installs to `/usr/local/bin`, and writes `/usr/local/share/gom/tools.txt` |
-| `common/smoke-test.sh` | Run in each new image before it's pushed: the user is `runner`, and every tool is on the PATH at the pinned version |
+| `common/install-tools.sh` | Runs the recipes: downloads, checks each SHA256, installs system-wide, writes `/usr/local/share/gom/tools.txt` |
+| `common/smoke-test.sh` | Run inside every build: the user is `runner`, and every tool answers its recipe's check |
 | `common/build-day.sh`, `common/test-build-day.sh` | The schedule rule, and its test |
+| `local/` | **A fork's own** recipes and pins. This repo never writes there (see the repo README, "Your own images") |
 
-The build context is `images/`, so the Dockerfiles can bind-mount `common/`
-without copying it into a layer.
+The build context is `images/`, so the Dockerfiles bind-mount `common/`,
+`local/` and their own folder without copying them into a layer.
+
+## The smoke test is part of the build
+
+Each Dockerfile has three stages: `image` installs the tools; `test` runs
+`smoke-test.sh` in it as the runner user; the final stage is `image` plus one
+file copied from `test`, which makes the test a step of every build. So a
+broken image never builds, with any builder -- GitHub's, or a remote BuildKit
+on a self-hosted runner with no Docker daemon.
 
 ## How the pins work
 
-- **Release binaries** (OpenTofu, kubectl, Helm, kustomize, yq, kubelogin,
-  the AWS CLI) are downloaded from the project's own release URL, at an exact
-  version, and refused unless the SHA256 matches `versions.env`.
-- **The Azure CLI** `.deb` is fetched from Microsoft's apt repo pool, by its
-  exact package version, with its checksum checked the same way. No
-  Microsoft repo or key is left in the image.
-- **Ubuntu packages** (python3, PyYAML, and the Azure CLI's few library
+- **Release binaries** (OpenTofu, kubectl, Helm, kustomize, yq, crane,
+  kubelogin, the AWS CLI) are downloaded from the project's own release URL,
+  at an exact version, and refused unless the SHA256 matches `versions.env`.
+- **The Azure CLI and the Google Cloud CLI** `.deb`s are fetched from the
+  vendor's apt repo pool, by exact version, with their checksums checked the
+  same way. No vendor repo or key is left in the image.
+- **Ubuntu packages** (python3, PyYAML, and the vendor packages' few
   dependencies) come from `snapshot.ubuntu.com` at the fixed time
   `UBUNTU_SNAPSHOT`. The live archive drops old versions, so pinning the
   version alone would break the next build.
@@ -73,31 +88,33 @@ without copying it into a layer.
     the days that aren't build days.
 - **Run now:** Actions → build-runner-images → Run workflow always builds.
 
-Everything is pinned, so a scheduled build with no bump installs the same
-versions again. It still proves every pinned download is there and matches
-its checksum. Security fixes arrive only through a bump, including the base
-pin.
+Each run first moves the base to the newest runner release at least two weeks
+old (below), then builds. Tools are pinned, so a run with no bump installs
+the same versions again; it still proves every pinned download is there and
+matches its checksum.
 
 GitHub disables scheduled workflows in a public repo after 60 days without a
 commit. If the builds stop, re-enable it on the Actions tab.
 
 ## Tags, and pulling
 
-Each build pushes `ghcr.io/gitopsmanager/<image>` with two tags:
+Each build pushes `ghcr.io/<repo owner>/<image>` with two tags:
 
-- `<YYYY.MM.DD>` (for example `2026.10.30`)
+- `<YYYY.MM.DD>` (for example `2026.11.15`)
 - `<YYYY.MM.DD>-<shortsha>` (the commit it was built from)
 
 **There's no `latest`.** Clients pin by digest, and a moving tag would invite
-an unpinned use that changes under a running estate. The run summary has a
-table with each image's digest. Use it like this:
+an unpinned use that changes under a running estate. Every build is a GitHub
+release named by its date, with each image's digest in its notes and in
+`images.json`:
 
 ```bash
-docker pull ghcr.io/gitopsmanager/runner-workflow-aws@sha256:<digest from the run summary>
+gh release download --repo gitopsmanager/runner-images --pattern images.json
+docker pull ghcr.io/gitopsmanager/runner-workflow-aws@sha256:<digest from images.json>
 ```
 
-or put the same `image@sha256:...` reference in the CodeBuild project or the
-Container Apps job.
+or put the same `image@sha256:...` reference in the CodeBuild project, the
+Container Apps job or the ARC runner set.
 
 The date tag moves if the same day is built twice. The digest never moves.
 
@@ -120,14 +137,20 @@ release, at least monthly.
      `.sig` against the AWS CLI Team key, then take its `sha256sum`.
    - For the Azure CLI, use the `SHA256` field for that version in
      `https://packages.microsoft.com/repos/azure-cli/dists/noble/main/binary-amd64/Packages`.
-3. Run the workflow. The smoke test fails if the image doesn't report the new
-   version.
+   - For the Google Cloud CLI and the GKE plugin, use the `Filename` and
+     `SHA256` fields in
+     `https://packages.cloud.google.com/apt/dists/cloud-sdk/main/binary-amd64/Packages`.
+3. Run the workflow. The build's smoke test fails if the image doesn't report
+   the new version.
+
+**A new tool:** a recipe in `common/tools/`, its pins in `versions.env`, and
+its name in the `tools` file of each image that should have it.
 
 **Ubuntu packages:** move `UBUNTU_SNAPSHOT` forward, and update
 `PYTHON3_DEB_VERSION` and `PYYAML_DEB_VERSION` to the versions in that
 snapshot.
 
-**The base image:** automatic. Every build run moves all four Dockerfiles to
+**The base image:** automatic. Every build run moves all the Dockerfiles to
 the newest runner release at least two weeks old, by tag and digest, commits
 that when it changed, tags the commit `<YYYY.MM.DD>`, builds from the tag and
 makes a GitHub release with the digests. To do it by hand instead, pick a
@@ -141,40 +164,47 @@ curl -sI -H "Authorization: Bearer $T" \
   https://ghcr.io/v2/actions/actions-runner/manifests/<version> | grep -i docker-content-digest
 ```
 
-Change the `FROM` line in **all four** Dockerfiles.
+and change the base `FROM` line in **every** Dockerfile.
 
 ## First run: things to check
 
-- **The packages start out private.** The first push creates the four GHCR
+- **The packages start out private.** The first push creates the GHCR
   packages. If clients should pull without credentials, make each one public
   in its package settings.
 - **Pruning needs the repo to have admin on each package.** The source label
   in each Dockerfile links the package to this repo. If the prune step fails
   with a 403, add this repo under the package's "Manage Actions access" with
   the Admin role.
+- **`main` must let github-actions push**: the base update commits and tags.
 
 ## Tested
 
 29 Oct 2026, on Windows (Git Bash), without building any image:
 
 - **Every checksum** in `versions.env` was checked against a download of the
-  file at the URL `install-tools.sh` uses.
+  file at the URL the recipes use.
   - **The AWS CLI zip's PGP signature verified** against key
     `FB5DB77FD5C118B80511ADA8A6310ACC4672475C`, fetched from
     keyserver.ubuntu.com. gpg reported that copy of the key as expired.
-- **`install-tools.sh`**, run with a scratch `GOM_PREFIX` for tofu, kubectl,
-  Helm, kustomize, yq and kubelogin: every checksum passed, the right file
-  was taken from each archive, and `tools.txt` was written.
-  - A wrong checksum stops it.
-  - An unknown tool name stops it.
-- **The build-day rule:** `test-build-day.sh` passes. It checks the 15th, the
-  30th, the 28th, 29th and 31st, the last day of February in 2027, 2028, 2100
-  and 2000, and the 28th of February in a leap year.
-- **The workflow:** parses as YAML, every `run:` block passes `bash -n`, and
-  the decide and summary steps produce the right outputs when run locally.
+- **The build-day rule:** `test-build-day.sh` passes.
+
+31 Oct 2026:
+
+- **The Google Cloud CLI and GKE plugin `.deb`s** were downloaded from
+  Google's pool, and both matched the SHA256 in Google's Packages index.
+- **The recipe installer**, run with a scratch `GOM_PREFIX`: tofu, kubectl,
+  Helm, kustomize, yq, crane (`tar` and `bin` recipes) and kubelogin (`zip`)
+  were downloaded, checked and installed, and `tools.txt` was written with
+  each recipe's check. Lists with comments, an absent `--list-if-present`
+  file, a `local/` recipe replacing one of ours (logged), and an unknown tool
+  (stops, exit 2) all behaved.
+- **The base update's `sed`**, on copies of the Dockerfiles: it changes the
+  base line only and keeps `AS image`.
+- **Both workflows** parse as YAML; the release's digest lookup and the
+  14-day runner pick were run live against GitHub and GHCR.
 
 **Not tested:**
-- **Building any image.** That means the AWS CLI installer, the Azure CLI
-  `.deb` and the snapshot apt sources are unproven.
-- `smoke-test.sh`.
-- Anything in GitHub Actions: the build, push, digest table and pruning.
+- **Building any image**, so the `script`, `deb` and `apt` recipes (the AWS
+  CLI installer, the Azure and Google `.deb`s, the snapshot apt sources) and
+  `smoke-test.sh` are unproven.
+- Anything in GitHub Actions: the build, push, release and pruning.

@@ -1,0 +1,5 @@
+# Copyright (c) 2026 GitOps Manager, S.L.
+# SPDX-License-Identifier: Apache-2.0
+# The tools in runner-workflow-aws, by recipe name (common/tools/<name>.tool).
+# To add tools in a fork, list them in tools.local beside this file instead.
+tofu awscli kubectl helm kustomize yq crane python3 pyyaml

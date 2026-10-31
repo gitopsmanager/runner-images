@@ -1,25 +1,48 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 GitOps Manager, S.L.
 # SPDX-License-Identifier: Apache-2.0
-# Installs the named tools system-wide, at the versions in versions.env, each
-# checked against its pinned SHA256 before it is unpacked. Run as root at
-# image build, from the Dockerfiles:
+# Installs tools system-wide from recipes, each download checked against its
+# pinned SHA256 before it is used. Run as root at image build, from the
+# Dockerfiles:
 #
-#   install-tools.sh tofu awscli kubectl helm kustomize yq python3
+#   install-tools.sh --local /tmp/gom-local --list /tmp/gom-image/tools \
+#                    --list-if-present /tmp/gom-image/tools.local
 #
-# Tools: tofu awscli azure-cli kubelogin kubectl helm kustomize yq crane python3.
-# jq, git, curl, unzip and bash are not here: the base runner image already
-# has them, so they are pinned by its digest.
+# A tool is a recipe, <name>.tool: common/tools/ holds ours; local/tools/
+# (a fork's, never written by this repo) is read after it, so a fork can add
+# tools and, if it must, replace one of ours. Pins: common/versions.env, then
+# local/versions.env. The recipe format is in common/tools/README.md.
 #
-# Writes /usr/local/share/gom/tools.txt ("<tool> <version>" per line), which
-# smoke-test.sh checks and which tells anyone holding the image what's in it.
+# Writes /usr/local/share/gom/tools.txt, one tab-separated line per tool --
+# name, version, command, check, expected -- which smoke-test.sh runs and
+# which tells anyone holding the image what's in it.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
+local_dir=""
+tools=()
+
+read_list() { # a list file: tool names, any whitespace, # comments
+  sed -e 's/#.*//' "$1" | tr -s '[:space:]' '\n' | sed '/^$/d'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --local) local_dir=$2; shift 2 ;;
+    --list) mapfile -t -O "${#tools[@]}" tools < <(read_list "$2"); shift 2 ;;
+    --list-if-present) [ ! -f "$2" ] || mapfile -t -O "${#tools[@]}" tools < <(read_list "$2"); shift 2 ;;
+    -*) echo "install-tools.sh: unknown option $1" >&2; exit 2 ;;
+    *) tools+=("$1"); shift ;;
+  esac
+done
+[ "${#tools[@]}" -gt 0 ] || { echo "usage: $0 [--local DIR] [--list FILE] [--list-if-present FILE] [tool...]" >&2; exit 2; }
+
 # shellcheck source=versions.env
 . "$here/versions.env"
-
-[ "$#" -gt 0 ] || { echo "usage: $0 <tool>..." >&2; exit 2; }
+if [ -n "$local_dir" ] && [ -f "$local_dir/versions.env" ]; then
+  # shellcheck disable=SC1091
+  . "$local_dir/versions.env"
+fi
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
@@ -36,87 +59,86 @@ fetch() {
   echo "$2  $3" | sha256sum -c --strict -
 }
 
-record() { echo "$1 $2" >> "$manifest"; }
-
-# Ubuntu and .deb installs are collected and done in one apt run at the end.
+# Ubuntu packages and .debs are collected and installed in one apt run at
+# the end, from the pinned snapshot.
 apt_pkgs=()
+apt_add() { apt_pkgs+=("$@"); }
 
-for tool in "$@"; do
-  case "$tool" in
-    tofu)
-      fetch "https://github.com/opentofu/opentofu/releases/download/v${OPENTOFU_VERSION}/tofu_${OPENTOFU_VERSION}_linux_amd64.tar.gz" \
-        "$OPENTOFU_SHA256" "$tmp/tofu.tgz"
-      tar -xzf "$tmp/tofu.tgz" -C "$tmp" tofu
-      install -m 0755 "$tmp/tofu" "$bin/tofu"
-      record tofu "$OPENTOFU_VERSION"
+recipe_for() {
+  local name=$1 found=""
+  [ -f "$here/tools/$name.tool" ] && found="$here/tools/$name.tool"
+  if [ -n "$local_dir" ] && [ -f "$local_dir/tools/$name.tool" ]; then
+    [ -z "$found" ] || echo "install-tools.sh: $name: using local/tools/$name.tool instead of ours" >&2
+    found="$local_dir/tools/$name.tool"
+  fi
+  [ -n "$found" ] || { echo "install-tools.sh: no recipe for '$name' (common/tools/ or local/tools/)" >&2; exit 2; }
+  echo "$found"
+}
+
+declare -A seen=()
+for tool in "${tools[@]}"; do
+  [ -z "${seen[$tool]:-}" ] || continue
+  seen[$tool]=1
+  recipe=$(recipe_for "$tool")
+
+  # Each recipe starts from nothing.
+  unset VERSION TYPE URL SHA256 BIN MEMBER INSTALL_DIR STRIP PACKAGES CMD CHECK EXPECT
+  unset -f install_tool 2>/dev/null || true
+  # shellcheck disable=SC1090
+  . "$recipe"
+  : "${VERSION:?$recipe: VERSION is required}" "${TYPE:?$recipe: TYPE is required}"
+  BIN=${BIN:-$tool}
+  CMD=${CMD:-$BIN}
+  CHECK=${CHECK:-$CMD --version}
+  EXPECT=${EXPECT-$VERSION}
+
+  case "$TYPE" in
+    bin)
+      fetch "$URL" "$SHA256" "$tmp/$tool"
+      install -m 0755 "$tmp/$tool" "$bin/$BIN"
       ;;
-    kubectl)
-      fetch "https://dl.k8s.io/release/v${KUBECTL_VERSION}/bin/linux/amd64/kubectl" \
-        "$KUBECTL_SHA256" "$tmp/kubectl"
-      install -m 0755 "$tmp/kubectl" "$bin/kubectl"
-      record kubectl "$KUBECTL_VERSION"
+    tar|zip)
+      fetch "$URL" "$SHA256" "$tmp/$tool.archive"
+      mkdir -p "$tmp/$tool.x"
+      if [ "$TYPE" = tar ]; then
+        tar -xf "$tmp/$tool.archive" -C "$tmp/$tool.x" ${STRIP:+--strip-components="$STRIP"}
+      else
+        unzip -q "$tmp/$tool.archive" -d "$tmp/$tool.x"
+      fi
+      if [ -n "${INSTALL_DIR:-}" ]; then
+        # The whole archive into its own folder, its command linked onto the PATH.
+        rm -rf "$INSTALL_DIR" && mkdir -p "$(dirname "$INSTALL_DIR")"
+        mv "$tmp/$tool.x" "$INSTALL_DIR"
+        ln -sf "$INSTALL_DIR/${MEMBER:-$BIN}" "$bin/$BIN"
+      else
+        install -m 0755 "$tmp/$tool.x/${MEMBER:-$BIN}" "$bin/$BIN"
+      fi
       ;;
-    helm)
-      fetch "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz" \
-        "$HELM_SHA256" "$tmp/helm.tgz"
-      tar -xzf "$tmp/helm.tgz" -C "$tmp" linux-amd64/helm
-      install -m 0755 "$tmp/linux-amd64/helm" "$bin/helm"
-      record helm "$HELM_VERSION"
+    deb)
+      # A vendor's .deb by exact file and checksum: no signing key or repo
+      # entry is left in the image. apt resolves its dependencies from the
+      # Ubuntu snapshot.
+      fetch "$URL" "$SHA256" "$tmp/$tool.deb"
+      apt_add "$tmp/$tool.deb"
       ;;
-    kustomize)
-      fetch "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv${KUSTOMIZE_VERSION}/kustomize_v${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
-        "$KUSTOMIZE_SHA256" "$tmp/kustomize.tgz"
-      tar -xzf "$tmp/kustomize.tgz" -C "$tmp" kustomize
-      install -m 0755 "$tmp/kustomize" "$bin/kustomize"
-      record kustomize "$KUSTOMIZE_VERSION"
+    apt)
+      # Ubuntu packages, name=version, from the pinned snapshot.
+      : "${PACKAGES:?$recipe: PACKAGES is required for TYPE=apt}"
+      # shellcheck disable=SC2086
+      apt_add $PACKAGES
       ;;
-    yq)
-      fetch "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" \
-        "$YQ_SHA256" "$tmp/yq"
-      install -m 0755 "$tmp/yq" "$bin/yq"
-      record yq "$YQ_VERSION"
-      ;;
-    crane)
-      fetch "https://github.com/google/go-containerregistry/releases/download/v${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
-        "$CRANE_SHA256" "$tmp/crane.tgz"
-      tar -xzf "$tmp/crane.tgz" -C "$tmp" crane
-      install -m 0755 "$tmp/crane" "$bin/crane"
-      record crane "$CRANE_VERSION"
-      ;;
-    kubelogin)
-      fetch "https://github.com/Azure/kubelogin/releases/download/v${KUBELOGIN_VERSION}/kubelogin-linux-amd64.zip" \
-        "$KUBELOGIN_SHA256" "$tmp/kubelogin.zip"
-      unzip -q "$tmp/kubelogin.zip" bin/linux_amd64/kubelogin -d "$tmp"
-      install -m 0755 "$tmp/bin/linux_amd64/kubelogin" "$bin/kubelogin"
-      record kubelogin "$KUBELOGIN_VERSION"
-      ;;
-    awscli)
-      fetch "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-${AWSCLI_VERSION}.zip" \
-        "$AWSCLI_SHA256" "$tmp/awscli.zip"
-      unzip -q "$tmp/awscli.zip" -d "$tmp"
-      "$tmp/aws/install" --install-dir "$prefix/aws-cli" --bin-dir "$bin"
-      record awscli "$AWSCLI_VERSION"
-      ;;
-    azure-cli)
-      # Straight from the repo's pool, by exact version and checksum, so no
-      # signing key or repo entry is left in the image. apt resolves its
-      # few library dependencies from the Ubuntu snapshot below.
-      fetch "https://packages.microsoft.com/repos/azure-cli/pool/main/a/azure-cli/azure-cli_${AZURE_CLI_DEB_VERSION}_amd64.deb" \
-        "$AZURE_CLI_SHA256" "$tmp/azure-cli.deb"
-      apt_pkgs+=("$tmp/azure-cli.deb")
-      record azure-cli "$AZURE_CLI_VERSION"
-      ;;
-    python3)
-      # PyYAML for the scripts that read values and topology files.
-      apt_pkgs+=("python3=$PYTHON3_DEB_VERSION" "python3-yaml=$PYYAML_DEB_VERSION")
-      record python3 "${PYTHON3_DEB_VERSION%%-*}"
-      record pyyaml "$PYYAML_VERSION"
+    script)
+      declare -F install_tool >/dev/null || { echo "$recipe: TYPE=script needs an install_tool function" >&2; exit 2; }
+      install_dir=$tmp/$tool.x
+      mkdir -p "$install_dir"
+      install_tool
       ;;
     *)
-      echo "install-tools.sh: unknown tool '$tool'" >&2
+      echo "$recipe: unknown TYPE '$TYPE' (bin tar zip deb apt script)" >&2
       exit 2
       ;;
   esac
+  printf '%s\t%s\t%s\t%s\t%s\n' "$tool" "$VERSION" "$CMD" "$CHECK" "$EXPECT" >> "$manifest"
 done
 
 if [ "${#apt_pkgs[@]}" -gt 0 ]; then
@@ -144,4 +166,4 @@ fi
 
 sort -u -o "$manifest" "$manifest"
 echo "Installed:"
-cat "$manifest"
+cut -f1,2 "$manifest"

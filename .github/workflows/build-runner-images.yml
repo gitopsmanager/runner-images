@@ -1,8 +1,13 @@
 # Copyright (c) 2026 GitOps Manager, S.L.
 # SPDX-License-Identifier: Apache-2.0
-# Builds the four runner images in images/, smoke-tests each one, pushes it
-# to GHCR, and prunes old versions. images/README.md says what each image is
-# for and how to bump a tool.
+# Builds the runner images in images/ (every runner-* folder), smoke-tests
+# each one, pushes it, and prunes old versions. images/README.md says what
+# each image is for and how to bump or add a tool.
+#
+# Published to GHCR, at ghcr.io/<repo owner>. Each image is built by
+# build-image.yml, the one file a fork replaces to build on its own runners
+# into its own registry; a fork switches this workflow on with the repository
+# variable RUNNER_IMAGES_BUILD=true. README: "Your own images".
 #
 # Twice a month (about every 15 days), and on demand ("Run workflow") after a
 # bump. Each run:
@@ -44,13 +49,10 @@ concurrency:
   group: build-runner-images
   cancel-in-progress: false
 
-env:
-  REGISTRY: ghcr.io/gitopsmanager
-
 jobs:
   decide:
-    # Forks have no access to the gitopsmanager packages.
-    if: github.repository == 'gitopsmanager/runner-images'
+    # This repo, or a fork that has switched it on.
+    if: github.repository == 'gitopsmanager/runner-images' || vars.RUNNER_IMAGES_BUILD == 'true'
     runs-on: ubuntu-24.04
     outputs:
       build: ${{ steps.day.outputs.build }}
@@ -64,13 +66,13 @@ jobs:
       - name: Test the build-day rule
         run: bash images/common/test-build-day.sh
 
-      # One base for all four is the point (one toolchain); four copies of the
+      # One base for all of them is the point (one toolchain); copies of the
       # FROM line can drift on a bump, so refuse that here.
       - name: Check every image has the same base
         run: |
-          grep -H '^FROM ' images/*/Dockerfile
-          if [ "$(grep -h '^FROM ' images/*/Dockerfile | sort -u | wc -l)" -ne 1 ]; then
-            echo "::error::images/*/Dockerfile don't all use the same FROM line"
+          grep -H '^FROM ghcr.io/actions/actions-runner:' images/runner-*/Dockerfile
+          if [ "$(grep -h '^FROM ghcr.io/actions/actions-runner:' images/runner-*/Dockerfile | sort -u | wc -l)" -ne 1 ]; then
+            echo "::error::images/runner-*/Dockerfile don't all use the same base FROM line"
             exit 1
           fi
 
@@ -150,15 +152,17 @@ jobs:
           BASE: ${{ steps.pick.outputs.base }}
         run: |
           set -euo pipefail
-          current=$(grep -h '^FROM ' images/*/Dockerfile | sort -u)
+          # Only the base line; the rest of the line (" AS image") stays.
+          line() { grep -h '^FROM ghcr.io/actions/actions-runner:' images/runner-*/Dockerfile | awk '{print $2}' | sort -u; }
+          current="FROM $(line)"
           if [ "$current" = "FROM $BASE" ]; then
             echo "Already on $BASE."
             exit 0
           fi
           for f in images/runner-*/Dockerfile; do
-            sed -i "s|^FROM ghcr.io/actions/actions-runner:.*|FROM $BASE|" "$f"
+            sed -i -E "s|^FROM ghcr\.io/actions/actions-runner:[^ ]+|FROM $BASE|" "$f"
           done
-          [ "$(grep -h '^FROM ' images/*/Dockerfile | sort -u)" = "FROM $BASE" ] || { echo "::error::A Dockerfile's FROM line was not updated"; exit 1; }
+          [ "$(line)" = "$BASE" ] || { echo "::error::A Dockerfile's base FROM line was not updated"; exit 1; }
           git commit -q -am "Base: ${BASE%@*}" -m "From ${current#FROM }"
           git push -q origin HEAD:main
           echo "Moved from ${current#FROM } to $BASE" >> "$GITHUB_STEP_SUMMARY"
@@ -179,153 +183,73 @@ jobs:
           fi
           { echo "sha=$sha"; echo "short_sha=${sha::7}"; } >> "$GITHUB_OUTPUT"
 
+  # One image per job, by build-image.yml: ours builds on GitHub's runners
+  # into GHCR; a fork may replace that file with its own build.
   build:
     needs: [decide, base]
     if: needs.decide.outputs.build == 'true'
-    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: write
     strategy:
-      # One image failing shouldn't stop the other three shipping.
+      # One image failing shouldn't stop the others shipping.
       fail-fast: false
       matrix:
         image: ${{ fromJSON(needs.decide.outputs.images) }}
-    env:
-      IMAGE: ghcr.io/gitopsmanager/${{ matrix.image }}
-      DATE_TAG: ${{ needs.decide.outputs.date_tag }}
-      SHORT_SHA: ${{ needs.base.outputs.short_sha }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.base.outputs.sha }}
-          persist-credentials: false
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image: ${{ matrix.image }}
+      sha: ${{ needs.base.outputs.sha }}
+      date_tag: ${{ needs.decide.outputs.date_tag }}
+      short_sha: ${{ needs.base.outputs.short_sha }}
 
-      - uses: docker/setup-buildx-action@v4
-
-      # Built into the local image store first, so a broken image is never
-      # pushed. The push below rebuilds from this builder's cache.
-      # provenance and sbom off: they turn each push into an index with
-      # untagged child manifests, which the version pruning below would count
-      # and could delete out from under a kept image.
-      - name: Build
-        uses: docker/build-push-action@v7
-        with:
-          context: images
-          file: images/${{ matrix.image }}/Dockerfile
-          platforms: linux/amd64
-          provenance: false
-          sbom: false
-          load: true
-          tags: smoke/${{ matrix.image }}:test
-
-      - name: Smoke test
-        run: >-
-          docker run --rm
-          -v "$GITHUB_WORKSPACE/images/common:/gom:ro"
-          "smoke/${{ matrix.image }}:test"
-          bash /gom/smoke-test.sh
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push
-        id: push
-        uses: docker/build-push-action@v7
-        with:
-          context: images
-          file: images/${{ matrix.image }}/Dockerfile
-          platforms: linux/amd64
-          provenance: false
-          sbom: false
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ env.DATE_TAG }}
-            ${{ env.IMAGE }}:${{ env.DATE_TAG }}-${{ env.SHORT_SHA }}
-          labels: |
-            org.opencontainers.image.revision=${{ needs.base.outputs.sha }}
-            org.opencontainers.image.version=${{ env.DATE_TAG }}
-
-      - name: Record the digest
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-        run: |
-          {
-            echo "### ${{ matrix.image }}"
-            echo
-            echo "| Image | Tags | Digest |"
-            echo "|---|---|---|"
-            echo "| \`$IMAGE\` | \`$DATE_TAG\`, \`$DATE_TAG-$SHORT_SHA\` | \`$DIGEST\` |"
-            echo
-            echo "Pin as \`$IMAGE@$DIGEST\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # Keep the six newest versions of this package (three months at two
-      # builds a month), delete the rest. A version is one pushed digest, so
-      # both tags of a build count once.
-      # v5.0.0 is the latest release (Jan 2024) and declares node20, which
-      # current runners run on node24.
-      - name: Prune old versions
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: ${{ matrix.image }}
-          package-type: container
-          min-versions-to-keep: 6
-
-  # One table for the whole run, read back from the registry, so the digests
-  # are what GHCR serves for the tags just pushed.
-  # The release is made only when every image is pushed.
+  # One table and one images.json for the whole run, from what each build
+  # recorded. The release is made only when every image is pushed.
   summary:
     needs: [decide, base, build]
     if: always() && needs.decide.outputs.build == 'true' && needs.base.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
-      packages: read
     env:
       IMAGES: ${{ needs.decide.outputs.images }}
       DATE_TAG: ${{ needs.decide.outputs.date_tag }}
       TAG: ${{ needs.decide.outputs.date_tag }}-${{ needs.base.outputs.short_sha }}
       BASE: ${{ needs.base.outputs.base }}
     steps:
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/login-action@v4
+      - uses: actions/download-artifact@v8
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
 
-      # The table for people, and images.json -- the same digests -- for
-      # anything that picks images up by script:
+      # images.json, for anything that picks images up by script:
       #   {"tag": "<YYYY.MM.DD>", "base": "<FROM>",
       #    "images": {"<image>": "ghcr.io/gitopsmanager/<image>@sha256:..."}}
       # Read the newest with:
       #   gh release download --repo gitopsmanager/runner-images --pattern images.json
       - name: Digest table and images.json
         run: |
-          echo '{}' > "$RUNNER_TEMP/images.json"
+          set -euo pipefail
+          shopt -s nullglob
+          files=("$RUNNER_TEMP"/digests/*.json)
+          if [ "${#files[@]}" -gt 0 ]; then jq -s 'add' "${files[@]}" > "$RUNNER_TEMP/all.json"; else echo '{}' > "$RUNNER_TEMP/all.json"; fi
           {
             echo "## Runner images, tag \`$TAG\`"
             echo
-            echo "| Image | Digest |"
+            echo "| Image | Pin as |"
             echo "|---|---|"
             for image in $(tr -d '[]"' <<<"$IMAGES" | tr ',' ' '); do
-              ref="$REGISTRY/$image:$TAG"
-              if digest=$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}' 2>/dev/null); then
-                echo "| \`$REGISTRY/$image\` | \`$digest\` |"
-                jq --arg k "$image" --arg v "$REGISTRY/$image@$digest" '.[$k] = $v' \
-                  "$RUNNER_TEMP/images.json" > "$RUNNER_TEMP/images.tmp" && mv "$RUNNER_TEMP/images.tmp" "$RUNNER_TEMP/images.json"
+              ref=$(jq -r --arg k "$image" '.[$k] // empty' "$RUNNER_TEMP/all.json")
+              if [ -n "$ref" ]; then
+                echo "| \`$image\` | \`$ref\` |"
               else
-                echo "| \`$REGISTRY/$image\` | not pushed (see its build job) |"
+                echo "| \`$image\` | not pushed (see its build job) |"
               fi
             done
           } | tee "$RUNNER_TEMP/table.md" >> "$GITHUB_STEP_SUMMARY"
           jq --arg tag "$DATE_TAG" --arg base "$BASE" '{tag: $tag, base: $base, images: .}' \
-            "$RUNNER_TEMP/images.json" > "$RUNNER_TEMP/images.out" && mv "$RUNNER_TEMP/images.out" "$RUNNER_TEMP/images.json"
+            "$RUNNER_TEMP/all.json" > "$RUNNER_TEMP/images.json"
           cat "$RUNNER_TEMP/images.json"
 
       - name: Release
