@@ -177,6 +177,35 @@ Dockerfile, so your build runs it too.
 The base update commits to your fork's `main`, as it does to ours; both make
 the same change, so syncing usually merges it cleanly.
 
+## Actions it uses
+
+If your organisation allows only selected actions (Settings → Actions →
+General → "Allow select actions"), a fork needs these. Pinned by major
+version, so allow each by name (`owner/name@*`), or by owner (`actions/*`,
+`docker/*`, `gitopsmanager/*`).
+
+| Action | Version | Used by | For |
+|---|---|---|---|
+| `actions/checkout` | v7 | every build | the repo at the commit being built |
+| `actions/upload-artifact` | v7 | every build | each image's digest, for the release |
+| `actions/download-artifact` | v8 | every build | collecting the digests for the release |
+| `docker/setup-buildx-action` | v4 | the default build | the image builder |
+| `docker/login-action` | v4 | the default build | signing in to GHCR |
+| `docker/build-push-action` | v7 | the default build | build, smoke test and push |
+| `actions/delete-package-versions` | v5 | the default build | keeping the 6 newest images in GHCR |
+| `gitopsmanager/multicloud-build-action` | v1 | `BUILD_IMAGE=local` (the example build) | build and push into ECR / ACR |
+| `gitopsmanager/detect-cloud` | v1 | inside `multicloud-build-action` | which cloud the runner is in |
+| `docker/bake-action` | v7 | inside `multicloud-build-action` | the build |
+| `actions/github-script` | v9 | inside `multicloud-build-action` | its sign-in and build planning |
+
+`actions/*` are GitHub's own and `docker/*` are Docker's (a verified creator),
+so "Allow actions created by GitHub" and "Allow actions by Marketplace
+verified creators" cover them; the `gitopsmanager/*` ones are needed only
+for the example build and must be allowed by name. The `gh` and `jq` the
+workflows run are on GitHub's runners already, not actions.
+
+Licences of the software inside the images: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## Security: use the newest release
 
 **Published images are never patched.** Fixes arrive only in new builds: a
