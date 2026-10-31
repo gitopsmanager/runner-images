@@ -89,6 +89,7 @@ A fork rebuilds on our schedule, on the same base, so yours keep up with ours.
    | Pin its version | `images/local/versions.env` (read after ours) |
    | Add an Ubuntu package | a recipe with `TYPE=apt`, `PACKAGES="name=version"` (a version in the pinned snapshot) |
    | Make a runner image of your own | a folder `images/runner-<yourorg>-<name>/` (below) |
+   | Build on your own runners, into your own registry | your build in `.github/workflows/build-image.local.yml`, and `BUILD_IMAGE=local` (below) |
 
 4. **Run it:** Actions → build-runner-images → Run workflow. After that it
    runs on the same schedule as ours.
@@ -133,14 +134,21 @@ Every `images/runner-*` folder is built, so that becomes
 digest.
 
 **Build on your own self-hosted runners, into your own registry** (ECR, ACR,
-Artifact Registry): replace [`build-image.yml`](.github/workflows/build-image.yml)
--- the one file that builds and pushes an image -- with your own: your
-`runs-on`, your build action (for example `gitopsmanager/multicloud-build-action`,
-which signs in to ECR or ACR with the runner's own identity and builds through
-its BuildKit), your registry. Keep its inputs, and give back what the release
-needs: an artifact `digest-<image>` holding
-`{"<image>": "<registry>/<image>@sha256:..."}`. The smoke test is inside each
-Dockerfile, so your build runs it too, with no Docker daemon needed.
+Artifact Registry): edit
+[`build-image.local.yml`](.github/workflows/build-image.local.yml) and set the
+repository variable `BUILD_IMAGE=local`. Without the variable, our
+[`build-image.yml`](.github/workflows/build-image.yml) builds on GitHub's
+runners into GHCR; with it, your file builds instead. We create
+`build-image.local.yml` once and never change it, so your edits never conflict
+on a sync -- don't edit `build-image.yml`, which we do change.
+
+In it: your `runs-on`, your build action (for example
+`gitopsmanager/multicloud-build-action`, which signs in to ECR or ACR with the
+runner's own identity and builds through its BuildKit), your registry. Keep
+its inputs, and give back what the release needs: an artifact `digest-<image>`
+holding `{"<image>": "<registry>/<image>@sha256:..."}`. The smoke test is
+inside each Dockerfile, so your build runs it too, with no Docker daemon
+needed.
 
 The base update commits to your fork's `main`, as it does to ours; both make
 the same change, so syncing usually merges it cleanly.

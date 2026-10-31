@@ -183,11 +183,16 @@ jobs:
           fi
           { echo "sha=$sha"; echo "short_sha=${sha::7}"; } >> "$GITHUB_OUTPUT"
 
-  # One image per job, by build-image.yml: ours builds on GitHub's runners
-  # into GHCR; a fork may replace that file with its own build.
+  # One image per job. Which build: the repository variable BUILD_IMAGE.
+  #   not set  build-image.yml: GitHub's runners, GHCR (this repo, and any fork
+  #            that keeps it)
+  #   local    build-image.local.yml: a fork's own build, its runners and
+  #            registry. That file is created once here and never changed
+  #            again, so a fork's edits to it never conflict on a sync.
+  # Exactly one of the two jobs runs; the other is skipped.
   build:
     needs: [decide, base]
-    if: needs.decide.outputs.build == 'true'
+    if: needs.decide.outputs.build == 'true' && vars.BUILD_IMAGE != 'local'
     permissions:
       contents: read
       packages: write
@@ -203,10 +208,28 @@ jobs:
       date_tag: ${{ needs.decide.outputs.date_tag }}
       short_sha: ${{ needs.base.outputs.short_sha }}
 
+  build-local:
+    needs: [decide, base]
+    if: needs.decide.outputs.build == 'true' && vars.BUILD_IMAGE == 'local'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write   # for a cloud registry's OIDC sign-in, if the fork's build uses one
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.decide.outputs.images) }}
+    uses: ./.github/workflows/build-image.local.yml
+    with:
+      image: ${{ matrix.image }}
+      sha: ${{ needs.base.outputs.sha }}
+      date_tag: ${{ needs.decide.outputs.date_tag }}
+      short_sha: ${{ needs.base.outputs.short_sha }}
+
   # One table and one images.json for the whole run, from what each build
   # recorded. The release is made only when every image is pushed.
   summary:
-    needs: [decide, base, build]
+    needs: [decide, base, build, build-local]
     if: always() && needs.decide.outputs.build == 'true' && needs.base.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
@@ -253,7 +276,8 @@ jobs:
           cat "$RUNNER_TEMP/images.json"
 
       - name: Release
-        if: needs.build.result == 'success'
+        # Whichever build ran must have succeeded; the other was skipped.
+        if: (needs.build.result == 'success' && needs.build-local.result == 'skipped') || (needs.build-local.result == 'success' && needs.build.result == 'skipped')
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}

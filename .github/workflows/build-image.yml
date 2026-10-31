@@ -5,12 +5,11 @@
 # per images/runner-* folder; everything else -- the schedule, the base
 # update, the tag, the release -- is that workflow's.
 #
-# THIS IS THE FILE A FORK REPLACES to build on its own runners into its own
-# registry (for example a self-hosted ARC runner set with BuildKit, pushing
-# to ECR or ACR through the runner's own identity). Keep the inputs, and keep
-# the one thing the release needs back: an artifact named
+# A fork should NOT edit this file (it changes here, so edits would conflict
+# on a sync). To build on its own runners into its own registry, a fork edits
+# build-image.local.yml instead and sets BUILD_IMAGE=local. Both files take
+# the same inputs and give back the same thing: an artifact named
 # digest-<image> holding {"<image>": "<registry>/<image>@sha256:..."}.
-# The smoke test is inside each Dockerfile, so any builder runs it.
 #
 # This one: GitHub's runners, GHCR at ghcr.io/<repo owner>, prune to the six
 # newest versions.
