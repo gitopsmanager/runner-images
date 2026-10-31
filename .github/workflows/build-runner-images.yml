@@ -1,0 +1,345 @@
+# Copyright (c) 2026 GitOps Manager, S.L.
+# SPDX-License-Identifier: Apache-2.0
+# Builds the four runner images in images/, smoke-tests each one, pushes it
+# to GHCR, and prunes old versions. images/README.md says what each image is
+# for and how to bump a tool.
+#
+# Twice a month (about every 15 days), and on demand ("Run workflow") after a
+# bump. Each run:
+#   1. moves the base to the newest actions/runner release at least 14 days
+#      old (the two-week rule in images/README.md), by tag and digest, in all
+#      four Dockerfiles, and commits that when it changed;
+#   2. tags the commit it builds <YYYY.MM.DD>, so every published image has
+#      its source tagged;
+#   3. builds, smoke-tests and pushes from that tag;
+#   4. once every image is pushed, makes the GitHub release for the tag, with
+#      the digests.
+# Tools stay pinned in images/common/versions.env, so a run with no base
+# change still proves every pinned download is there and matches its
+# checksum.
+#
+# Tags: <YYYY.MM.DD> and <YYYY.MM.DD>-<shortsha>. There is no "latest", on
+# purpose: clients pin an image by digest, and a moving tag would invite
+# unpinned use that changes under a running estate. The date tag moves if the
+# same day is built twice; the digest never does.
+name: build-runner-images
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Wanted: the 15th, and the 30th or the last day of February. Cron can't
+    # say "30th, or the 28th/29th in February", so this fires on all four
+    # days and the decide job keeps the right ones (images/common/build-day.sh).
+    # 04:00 UTC, clear of the top-of-the-hour rush when GitHub drops runs.
+    - cron: "0 4 15,28,29,30 * *"
+
+permissions:
+  contents: read
+
+# The base commit and tag are pushed with the workflow's own token, so main
+# must let github-actions push (no rule requiring a pull request for it).
+# A manual run on a build day shouldn't race the scheduled one for the same
+# tags.
+concurrency:
+  group: build-runner-images
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/gitopsmanager
+
+jobs:
+  decide:
+    # Forks have no access to the gitopsmanager packages.
+    if: github.repository == 'gitopsmanager/runner-images'
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.day.outputs.build }}
+      date_tag: ${{ steps.day.outputs.date_tag }}
+      images: ${{ steps.day.outputs.images }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Test the build-day rule
+        run: bash images/common/test-build-day.sh
+
+      # One base for all four is the point (one toolchain); four copies of the
+      # FROM line can drift on a bump, so refuse that here.
+      - name: Check every image has the same base
+        run: |
+          grep -H '^FROM ' images/*/Dockerfile
+          if [ "$(grep -h '^FROM ' images/*/Dockerfile | sort -u | wc -l)" -ne 1 ]; then
+            echo "::error::images/*/Dockerfile don't all use the same FROM line"
+            exit 1
+          fi
+
+      - id: day
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            build=true
+          else
+            build=$(bash images/common/build-day.sh)
+          fi
+          # The image list is here once; the build and summary jobs read it.
+          images=""
+          for d in images/runner-*/; do images="$images\"$(basename "$d")\","; done
+          images="[${images%,}]"
+          {
+            echo "build=$build"
+            echo "date_tag=$(date -u +%Y.%m.%d)"
+            echo "images=$images"
+          } >> "$GITHUB_OUTPUT"
+          if [ "$build" != true ]; then
+            echo "$(date -u +%F) is not a build day (the 15th, the 30th, or the last day of February). Nothing built." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "event=$EVENT build=$build images=$images"
+
+  # The base image, the commit and the tag the build runs from.
+  base:
+    needs: decide
+    if: needs.decide.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.tag.outputs.sha }}
+      short_sha: ${{ steps.tag.outputs.short_sha }}
+      base: ${{ steps.pick.outputs.base }}
+    env:
+      DATE_TAG: ${{ needs.decide.outputs.date_tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Newest runner release at least 14 days old
+        id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(gh api "repos/actions/runner/releases?per_page=30" --jq '
+            [.[] | select(.draft == false and .prerelease == false
+                          and (.published_at | fromdateiso8601) <= (now - 14*86400))]
+            | first | .tag_name' | sed 's/^v//')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::No runner release at least 14 days old found"; exit 1; }
+
+          # The index digest: it covers every architecture.
+          token=$(curl -fsS "https://ghcr.io/token?scope=repository:actions/actions-runner:pull" | jq -r .token)
+          digest=$(curl -fsSI -H "Authorization: Bearer $token" \
+              -H "Accept: application/vnd.oci.image.index.v1+json" \
+              -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+              "https://ghcr.io/v2/actions/actions-runner/manifests/$version" |
+            tr -d '\r' | awk 'tolower($1) == "docker-content-digest:" {print $2}')
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::No digest for actions-runner:$version"; exit 1; }
+
+          base="ghcr.io/actions/actions-runner:$version@$digest"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "Base: $base"
+
+      - name: Move the Dockerfiles onto it
+        env:
+          BASE: ${{ steps.pick.outputs.base }}
+        run: |
+          set -euo pipefail
+          current=$(grep -h '^FROM ' images/*/Dockerfile | sort -u)
+          if [ "$current" = "FROM $BASE" ]; then
+            echo "Already on $BASE."
+            exit 0
+          fi
+          for f in images/runner-*/Dockerfile; do
+            sed -i "s|^FROM ghcr.io/actions/actions-runner:.*|FROM $BASE|" "$f"
+          done
+          [ "$(grep -h '^FROM ' images/*/Dockerfile | sort -u)" = "FROM $BASE" ] || { echo "::error::A Dockerfile's FROM line was not updated"; exit 1; }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -q -am "Base: ${BASE%@*}" -m "From ${current#FROM }"
+          git push -q origin HEAD:main
+          echo "Moved from ${current#FROM } to $BASE" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Tag what is built
+        id: tag
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse HEAD)
+          existing=$(git ls-remote --tags origin "refs/tags/$DATE_TAG^{}" | cut -f1)
+          if [ -n "$existing" ]; then
+            # A second run the same day: fine on the same commit, refused on another.
+            [ "$existing" = "$sha" ] || { echo "::error::Tag $DATE_TAG already exists on another commit ($existing)"; exit 1; }
+            echo "Tag $DATE_TAG already on $sha."
+          else
+            git tag -a "$DATE_TAG" -m "Runner images $DATE_TAG"
+            git push -q origin "refs/tags/$DATE_TAG"
+          fi
+          { echo "sha=$sha"; echo "short_sha=${sha::7}"; } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [decide, base]
+    if: needs.decide.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      # One image failing shouldn't stop the other three shipping.
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.decide.outputs.images) }}
+    env:
+      IMAGE: ghcr.io/gitopsmanager/${{ matrix.image }}
+      DATE_TAG: ${{ needs.decide.outputs.date_tag }}
+      SHORT_SHA: ${{ needs.base.outputs.short_sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.base.outputs.sha }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Built into the local image store first, so a broken image is never
+      # pushed. The push below rebuilds from this builder's cache.
+      # provenance and sbom off: they turn each push into an index with
+      # untagged child manifests, which the version pruning below would count
+      # and could delete out from under a kept image.
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: images
+          file: images/${{ matrix.image }}/Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          load: true
+          tags: smoke/${{ matrix.image }}:test
+
+      - name: Smoke test
+        run: >-
+          docker run --rm
+          -v "$GITHUB_WORKSPACE/images/common:/gom:ro"
+          "smoke/${{ matrix.image }}:test"
+          bash /gom/smoke-test.sh
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: images
+          file: images/${{ matrix.image }}/Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ env.DATE_TAG }}
+            ${{ env.IMAGE }}:${{ env.DATE_TAG }}-${{ env.SHORT_SHA }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.base.outputs.sha }}
+            org.opencontainers.image.version=${{ env.DATE_TAG }}
+
+      - name: Record the digest
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          {
+            echo "### ${{ matrix.image }}"
+            echo
+            echo "| Image | Tags | Digest |"
+            echo "|---|---|---|"
+            echo "| \`$IMAGE\` | \`$DATE_TAG\`, \`$DATE_TAG-$SHORT_SHA\` | \`$DIGEST\` |"
+            echo
+            echo "Pin as \`$IMAGE@$DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Keep the six newest versions of this package (three months at two
+      # builds a month), delete the rest. A version is one pushed digest, so
+      # both tags of a build count once.
+      # v5.0.0 is the latest release (Jan 2024) and declares node20, which
+      # current runners run on node24.
+      - name: Prune old versions
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ matrix.image }}
+          package-type: container
+          min-versions-to-keep: 6
+
+  # One table for the whole run, read back from the registry, so the digests
+  # are what GHCR serves for the tags just pushed.
+  # The release is made only when every image is pushed.
+  summary:
+    needs: [decide, base, build]
+    if: always() && needs.decide.outputs.build == 'true' && needs.base.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      packages: read
+    env:
+      IMAGES: ${{ needs.decide.outputs.images }}
+      DATE_TAG: ${{ needs.decide.outputs.date_tag }}
+      TAG: ${{ needs.decide.outputs.date_tag }}-${{ needs.base.outputs.short_sha }}
+      BASE: ${{ needs.base.outputs.base }}
+    steps:
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The table for people, and images.json -- the same digests -- for
+      # anything that picks images up by script:
+      #   {"tag": "<YYYY.MM.DD>", "base": "<FROM>",
+      #    "images": {"<image>": "ghcr.io/gitopsmanager/<image>@sha256:..."}}
+      # Read the newest with:
+      #   gh release download --repo gitopsmanager/runner-images --pattern images.json
+      - name: Digest table and images.json
+        run: |
+          echo '{}' > "$RUNNER_TEMP/images.json"
+          {
+            echo "## Runner images, tag \`$TAG\`"
+            echo
+            echo "| Image | Digest |"
+            echo "|---|---|"
+            for image in $(tr -d '[]"' <<<"$IMAGES" | tr ',' ' '); do
+              ref="$REGISTRY/$image:$TAG"
+              if digest=$(docker buildx imagetools inspect "$ref" --format '{{.Manifest.Digest}}' 2>/dev/null); then
+                echo "| \`$REGISTRY/$image\` | \`$digest\` |"
+                jq --arg k "$image" --arg v "$REGISTRY/$image@$digest" '.[$k] = $v' \
+                  "$RUNNER_TEMP/images.json" > "$RUNNER_TEMP/images.tmp" && mv "$RUNNER_TEMP/images.tmp" "$RUNNER_TEMP/images.json"
+              else
+                echo "| \`$REGISTRY/$image\` | not pushed (see its build job) |"
+              fi
+            done
+          } | tee "$RUNNER_TEMP/table.md" >> "$GITHUB_STEP_SUMMARY"
+          jq --arg tag "$DATE_TAG" --arg base "$BASE" '{tag: $tag, base: $base, images: .}' \
+            "$RUNNER_TEMP/images.json" > "$RUNNER_TEMP/images.out" && mv "$RUNNER_TEMP/images.out" "$RUNNER_TEMP/images.json"
+          cat "$RUNNER_TEMP/images.json"
+
+      - name: Release
+        if: needs.build.result == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          {
+            echo "Base: \`$BASE\`"
+            echo
+            cat "$RUNNER_TEMP/table.md"
+            echo
+            echo "Pin an image by its digest. The same digests, for scripts: \`images.json\` below. Tools and their versions: \`images/common/versions.env\` at this tag."
+          } > "$RUNNER_TEMP/notes.md"
+          if gh release view "$DATE_TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release edit "$DATE_TAG" --repo "$REPO" --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$DATE_TAG" --repo "$REPO" --verify-tag --title "Runner images $DATE_TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
+          gh release upload "$DATE_TAG" "$RUNNER_TEMP/images.json" --repo "$REPO" --clobber
