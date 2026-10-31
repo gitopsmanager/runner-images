@@ -11,14 +11,19 @@ one image at a time through
 > checked against the release files and the installer was run locally (see
 > [Tested](#tested)); the first run of the workflow is the first build.
 
-| Image | Runs | Tools |
-|---|---|---|
-| `runner-workflow-aws` | Long workflows (OpenTofu create, Helm installs) on CodeBuild | OpenTofu, AWS CLI v2, kubectl, Helm, kustomize, yq, crane, python3 + PyYAML |
-| `runner-workflow-azure` | Long workflows on Container Apps jobs | OpenTofu, Azure CLI, kubelogin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
-| `runner-workflow-gcp` | Long workflows on Google Cloud | OpenTofu, Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
-| `runner-adhock-aws` | AddHock (short GUI commands) on an always-on runner | AWS CLI v2, kubectl, yq |
-| `runner-adhock-azure` | AddHock on an always-on runner | Azure CLI, kubelogin, kubectl, yq |
-| `runner-adhock-gcp` | AddHock on an always-on runner | Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, yq |
+| Image | Kind | Runs on | Tools |
+|---|---|---|---|
+| `runner-workflow-aws` | Long-running, AWS | CodeBuild | OpenTofu, AWS CLI v2, kubectl, Helm, kustomize, yq, crane, python3 + PyYAML |
+| `runner-workflow-azure` | Long-running, Azure | Container Apps jobs | OpenTofu, Azure CLI, kubelogin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
+| `runner-workflow-gcp` | Long-running, Google Cloud | Not chosen yet | OpenTofu, Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
+| `runner-adhock-aws` | Short commands, AWS | An always-on runner | AWS CLI v2, kubectl, yq |
+| `runner-adhock-azure` | Short commands, Azure | An always-on runner | Azure CLI, kubelogin, kubectl, yq |
+| `runner-adhock-gcp` | Short commands, Google Cloud | An always-on runner | Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, yq |
+
+**Long-running** (`runner-workflow-*`): workflows that can take many
+minutes, like creating a cluster with OpenTofu or installing with Helm. They
+carry the full toolset. **Short commands** (`runner-adhock-*`): quick AddHock
+commands from the GUI on an always-on runner.
 
 Every image also has jq, git, curl, unzip and bash from the base image. The
 exact list is each image's `tools` file.

@@ -7,14 +7,29 @@ Helm) pinned and checksum-verified, rebuilt on a schedule and published to
 GHCR as `ghcr.io/gitopsmanager/<image>`. Part of
 [GitOps Manager](https://gitopsmanager.io).
 
+> **New images about every 15 days: on the 15th and the 30th of each month**
+> (the last day of February, which has no 30th), at 04:00 UTC. Each build moves to the newest GitHub runner base
+> that is at least two weeks old and is published as a dated release. Images
+> are never patched once published, so move to the newest release at least
+> monthly ([Security](#security-use-the-newest-release)).
+
+There are two kinds of image, one of each for every cloud:
+
+- **Long-running** (`runner-workflow-*`): workflows that can take many
+  minutes, such as creating a cluster with OpenTofu or installing with Helm.
+  They carry the full toolset.
+- **Short commands** (`runner-adhock-*`): quick AddHock commands from the GUI,
+  on a runner that is always on. They are lean on purpose, with no OpenTofu or
+  Helm, since an always-on runner is pulled to every node it lands on.
+
 | Image | For |
 |---|---|
-| `runner-workflow-aws` | Long workflows (OpenTofu, Helm) on AWS |
-| `runner-workflow-azure` | Long workflows on Azure |
-| `runner-workflow-gcp` | Long workflows on Google Cloud |
-| `runner-adhock-aws` | Short commands on an always-on runner, AWS |
-| `runner-adhock-azure` | The same, Azure |
-| `runner-adhock-gcp` | The same, Google Cloud |
+| `runner-workflow-aws` | Long-running, AWS |
+| `runner-workflow-azure` | Long-running, Azure |
+| `runner-workflow-gcp` | Long-running, Google Cloud |
+| `runner-adhock-aws` | Short commands, AWS |
+| `runner-adhock-azure` | Short commands, Azure |
+| `runner-adhock-gcp` | Short commands, Google Cloud |
 
 What is in each, the pins and how they are checked, the build schedule and
 tagging: [images/README.md](images/README.md). The build:
