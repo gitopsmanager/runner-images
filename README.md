@@ -89,7 +89,7 @@ A fork rebuilds on our schedule, on the same base, so yours keep up with ours.
    | Pin its version | `images/local/versions.env` (read after ours) |
    | Add an Ubuntu package | a recipe with `TYPE=apt`, `PACKAGES="name=version"` (a version in the pinned snapshot) |
    | Make a runner image of your own | a folder `images/runner-<yourorg>-<name>/` (below) |
-   | Build on your own runners, into your own registry | a copy of `examples/build-image.local.yml` at `.github/workflows/build-image.local.yml`, and `BUILD_IMAGE=local` (below) |
+   | Build on your own runners, into your own registry | a copy of `examples/build/` at `images/local/build/`, and `BUILD_IMAGE=local` (below) |
 
 4. **Run it:** Actions → build-runner-images → Run workflow. After that it
    runs on the same schedule as ours.
@@ -134,18 +134,20 @@ Every `images/runner-*` folder is built, so that becomes
 digest.
 
 **Build on your own self-hosted runners, into your own registry** (ECR, ACR,
-Artifact Registry): copy the example into place, and set the repository
-variable `BUILD_IMAGE=local`:
+Artifact Registry): copy the example build action into your own area, and set
+the repository variables below, starting with `BUILD_IMAGE=local`:
 
 ```bash
-cp examples/build-image.local.yml .github/workflows/build-image.local.yml
+mkdir -p images/local/build
+cp examples/build/action.yml images/local/build/action.yml
 ```
 
-Without the variable, our [`build-image.yml`](.github/workflows/build-image.yml)
-builds on GitHub's runners into GHCR; with it, your copy builds instead. This
-repo has no `.github/workflows/build-image.local.yml` and never changes the
-example, so your copy never conflicts on a sync -- don't edit
-`build-image.yml`, which we do change.
+Without `BUILD_IMAGE`, our [`build-image.yml`](.github/workflows/build-image.yml)
+builds on GitHub's runners into GHCR; with `BUILD_IMAGE=local`, it runs your
+action at `images/local/build` instead, on the runner `RUNNER_LABELS` names.
+This repo never writes in `images/local/` and never changes the example, so
+your copy never conflicts on a sync -- don't edit `build-image.yml`, which we
+do change.
 
 As shipped, it builds with
 [`multicloud-build-action`](https://github.com/gitopsmanager/multicloud-build-action):
@@ -157,7 +159,7 @@ repository variables:
 | Variable | |
 |---|---|
 | `BUILD_IMAGE` | `local`, to use this build instead of ours |
-| `RUNNER_LABELS` | the runner to build on: a label or a JSON list (default `["self-hosted"]`) |
+| `RUNNER_LABELS` | the runner to build on: a label or a JSON list, e.g. `["self-hosted","build"]` (default `ubuntu-24.04`, GitHub's) |
 | `AWS_IMAGE_REGISTRY` | ECR, e.g. `111122223333.dkr.ecr.eu-west-1.amazonaws.com` |
 | `AZURE_IMAGE_REGISTRY` | ACR, e.g. `clientacr.azurecr.io` (at least one of the two; both set pushes to both) |
 | `IMAGE_REPOSITORY_PREFIX` | optional: repositories are `<prefix>/<image>` |
@@ -166,10 +168,11 @@ repository variables:
 
 ECR needs each repository to exist first; ACR makes them on the first push.
 Nothing prunes old images there: keep the newest few with the registry's own
-rule (an ECR lifecycle policy, ACR retention). Or change the file however you
-like; whatever it does, it must give back what the release needs: an artifact
-`digest-<image>` holding `{"<image>": "<registry>/<image>@sha256:..."}`. The
-smoke test is inside each Dockerfile, so your build runs it too.
+rule (an ECR lifecycle policy, ACR retention). Or change your copy however you
+like; whatever it does, it must give back two outputs: `ref` (where it pushed,
+`<registry>/<repository>`, no tag) and `digest` (`sha256:...`). The release
+and `images.json` are built from them. The smoke test is inside each
+Dockerfile, so your build runs it too.
 
 The base update commits to your fork's `main`, as it does to ours; both make
 the same change, so syncing usually merges it cleanly.

@@ -1,0 +1,119 @@
+# Copyright (c) 2026 GitOps Manager, S.L.
+# SPDX-License-Identifier: Apache-2.0
+#
+# EXAMPLE of a fork's own build: build and push one image on your own
+# self-hosted runners, into your own ECR and/or ACR.
+#
+# To use it, in your fork:
+#   mkdir -p images/local/build
+#   cp examples/build/action.yml images/local/build/action.yml
+# then set the repository variables below, and BUILD_IMAGE=local.
+# build-image.yml then runs your copy instead of its own GHCR build. This
+# example is never changed, and this repo never writes in images/local/, so
+# your copy never conflicts with "Sync fork". Use it as it is, or change
+# anything in your copy.
+#
+# It builds with gitopsmanager/multicloud-build-action, which on a
+# self-hosted runner builds through the runner's BuildKit (no Docker daemon
+# needed) and signs in to ECR and ACR with the runner's own identity: EKS Pod
+# Identity, or the AKS workload / managed identity. Or, from any runner,
+# through GitHub OIDC with the *_OIDC_* variables.
+#
+# REPOSITORY VARIABLES (build-image.yml passes them in as environment)
+#   BUILD_IMAGE              local
+#   RUNNER_LABELS            the runner to build on: a label, or a JSON list
+#                            (default ubuntu-24.04: set it to your runners)
+#   AWS_IMAGE_REGISTRY       ECR, e.g. 111122223333.dkr.ecr.eu-west-1.amazonaws.com
+#   AZURE_IMAGE_REGISTRY     ACR, e.g. clientacr.azurecr.io
+#                            At least one. Both set: pushed to both.
+#   IMAGE_REPOSITORY_PREFIX  optional: repositories are <prefix>/<image>
+#                            (e.g. runners/runner-workflow-aws); none: <image>
+#   AWS_ECR_OIDC_ROLE_ARN    optional: push to ECR as this role through GitHub
+#                            OIDC instead of the runner's identity
+#   AZURE_ACR_OIDC_CLIENT_ID, AZURE_TENANT_ID
+#                            optional: the same for ACR
+# ECR needs each repository to exist (<prefix>/<image>); ACR makes them on
+# the first push. Nothing prunes: keep the newest few with the registry's own
+# rule (an ECR lifecycle policy, ACR retention).
+#
+# WHAT IT MUST GIVE BACK, whatever you change: the outputs ref (where it
+# pushed, <registry>/<repository>, no tag) and digest (sha256:...). The release
+# and images.json are built from them.
+name: Build one runner image (example)
+description: Builds, smoke-tests and pushes one image from images/<image> into ECR and/or ACR.
+
+inputs:
+  image:
+    description: The folder under images/ (and the image's name).
+    required: true
+  tag:
+    description: The tag to push.
+    required: true
+
+outputs:
+  ref:
+    description: Where it pushed, <registry>/<repository>, without a tag.
+    value: ${{ steps.plan.outputs.ref }}
+  digest:
+    description: The pushed image's digest.
+    value: ${{ steps.digest.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    # Where it goes, from the variables.
+    - name: Plan
+      id: plan
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+        aws=${AWS_IMAGE_REGISTRY:-}; aws=${aws%/}
+        az=${AZURE_IMAGE_REGISTRY:-}; az=${az%/}
+        prefix=${IMAGE_REPOSITORY_PREFIX:-}
+        if [ -n "$aws" ] && [ -n "$az" ]; then push=both
+        elif [ -n "$aws" ]; then push=aws
+        elif [ -n "$az" ]; then push=azure
+        else echo "::error::Set AWS_IMAGE_REGISTRY and/or AZURE_IMAGE_REGISTRY (repository variables)"; exit 1
+        fi
+        name=${prefix:+${prefix%/}/}$IMAGE
+        # The one place recorded for the release: ECR when pushed there, else ACR.
+        primary=$([ -n "$aws" ] && echo "$aws" || echo "$az")
+        {
+          echo "push=$push"
+          echo "aws=$aws"
+          echo "azure=$az"
+          echo "name=$name"
+          echo "ref=$primary/$name"
+        } >> "$GITHUB_OUTPUT"
+        echo "$IMAGE -> push=$push as $name:$TAG"
+
+    - name: Build, test and push
+      uses: gitopsmanager/multicloud-build-action@v1
+      with:
+        path: images
+        build_file: images/${{ inputs.image }}/Dockerfile
+        image: ${{ steps.plan.outputs.name }}
+        tag: ${{ inputs.tag }}
+        push: ${{ steps.plan.outputs.push }}
+        aws_registry: ${{ steps.plan.outputs.aws }}
+        azure_registry: ${{ steps.plan.outputs.azure }}
+        aws_ecr_oidc_role_arn: ${{ env.AWS_ECR_OIDC_ROLE_ARN }}
+        azure_acr_oidc_client_id: ${{ env.AZURE_ACR_OIDC_CLIENT_ID }}
+        azure_tenant_id: ${{ env.AZURE_TENANT_ID }}
+
+    # multicloud-build-action reports no digest, so read it back from the
+    # registry, signed in by the action already.
+    - name: Digest
+      id: digest
+      shell: bash
+      env:
+        REF: ${{ steps.plan.outputs.ref }}
+        TAG: ${{ inputs.tag }}
+      run: |
+        set -euo pipefail
+        digest=$(docker buildx imagetools inspect "$REF:$TAG" --format '{{.Manifest.Digest}}')
+        [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "::error::No digest for $REF:$TAG"; exit 1; }
+        echo "digest=$digest" >> "$GITHUB_OUTPUT"

@@ -183,19 +183,18 @@ jobs:
           fi
           { echo "sha=$sha"; echo "short_sha=${sha::7}"; } >> "$GITHUB_OUTPUT"
 
-  # One image per job. Which build: the repository variable BUILD_IMAGE.
-  #   not set  build-image.yml: GitHub's runners, GHCR (this repo, and any fork
-  #            that keeps it)
-  #   local    build-image.local.yml: a fork's own build, its runners and
-  #            registry -- its copy of examples/build-image.local.yml. This
-  #            repo has no such file, so a fork's copy never conflicts.
-  # Exactly one of the two jobs runs; the other is skipped.
+  # One image per job, by build-image.yml. By default it builds on GitHub's
+  # runners into GHCR; with BUILD_IMAGE=local it runs a fork's own build
+  # action, images/local/build (a copy of examples/build), on the fork's
+  # runners into its registry. That action is loaded only when it runs, so
+  # this repo needs none of its own.
   build:
     needs: [decide, base]
-    if: needs.decide.outputs.build == 'true' && vars.BUILD_IMAGE != 'local'
+    if: needs.decide.outputs.build == 'true'
     permissions:
       contents: read
       packages: write
+      id-token: write   # a fork's build signing in to a cloud registry through OIDC
     strategy:
       # One image failing shouldn't stop the others shipping.
       fail-fast: false
@@ -208,28 +207,10 @@ jobs:
       date_tag: ${{ needs.decide.outputs.date_tag }}
       short_sha: ${{ needs.base.outputs.short_sha }}
 
-  build-local:
-    needs: [decide, base]
-    if: needs.decide.outputs.build == 'true' && vars.BUILD_IMAGE == 'local'
-    permissions:
-      contents: read
-      packages: write
-      id-token: write   # for a cloud registry's OIDC sign-in, if the fork's build uses one
-    strategy:
-      fail-fast: false
-      matrix:
-        image: ${{ fromJSON(needs.decide.outputs.images) }}
-    uses: ./.github/workflows/build-image.local.yml
-    with:
-      image: ${{ matrix.image }}
-      sha: ${{ needs.base.outputs.sha }}
-      date_tag: ${{ needs.decide.outputs.date_tag }}
-      short_sha: ${{ needs.base.outputs.short_sha }}
-
   # One table and one images.json for the whole run, from what each build
   # recorded. The release is made only when every image is pushed.
   summary:
-    needs: [decide, base, build, build-local]
+    needs: [decide, base, build]
     if: always() && needs.decide.outputs.build == 'true' && needs.base.result == 'success'
     runs-on: ubuntu-24.04
     permissions:
@@ -276,8 +257,7 @@ jobs:
           cat "$RUNNER_TEMP/images.json"
 
       - name: Release
-        # Whichever build ran must have succeeded; the other was skipped.
-        if: (needs.build.result == 'success' && needs.build-local.result == 'skipped') || (needs.build-local.result == 'success' && needs.build.result == 'skipped')
+        if: needs.build.result == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
