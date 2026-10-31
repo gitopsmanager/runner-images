@@ -46,10 +46,21 @@ stack, these do not wait for a release.
 
 ## Your own images
 
-The six images above are the ones the GitOps Manager service runs on: use
-them, build on them, but don't change them, and don't reuse their names
-(`runner-workflow-*`, `runner-adhock-*`) for images of your own. Everything
-below adds to them without touching them.
+**You don't need a subscription to use these.** The images and this repo are
+open source (Apache 2.0): pull them, build on them or fork them for your own
+self-hosted runners, free.
+
+They are also the images the GitOps Manager SaaS offering runs on: its
+workflows run on them, in your own accounts. See
+[eksmanager.io](https://eksmanager.io) for the product, and subscribe through
+[AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-ne3pafhkcikaq).
+To subscribe you need to be signed in to AWS Marketplace with the AWS account
+you want to buy from; the subscription is billed to that account.
+
+Use the images, build on them, but don't change them, and don't reuse their
+names (`runner-workflow-*`, `runner-adhock-*`) for images of your own: the
+service expects what is in them. Everything below adds to them without
+touching them.
 
 ### Build on ours, in your own repo (no fork)
 
