@@ -62,25 +62,18 @@ names (`runner-workflow-*`, `runner-adhock-*`) for images of your own: the
 service expects what is in them. Everything below adds to them without
 touching them.
 
-### Build on ours, in your own repo (no fork)
-
-The simplest way to add a tool or two. In your repo, with your own pipeline:
-
-```dockerfile
-FROM ghcr.io/gitopsmanager/runner-workflow-aws@sha256:<digest from images.json>
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends <package> \
- && rm -rf /var/lib/apt/lists/*
-USER runner
-```
-
-You choose when to move to our newer digest.
-
 ### Fork this repo, and add your own
 
 Your images then get everything ours do: the base moved to each new runner
 release (two weeks old), every download checked, a smoke test in the build,
 dated tags, a release with `images.json`, pruning.
+
+**Why on the same cadence.** A runner image has to keep moving. GitHub stops
+sending jobs to a self-hosted runner whose runner software is too far behind
+the current release -- for runners that don't update themselves, as under
+ARC, about 30 days after a new release -- and we delete our own images after
+about three months. An image built once and left alone stops getting jobs.
+A fork rebuilds on our schedule, on the same base, so yours keep up with ours.
 
 1. **Fork** `gitopsmanager/runner-images` into your organisation. On the
    fork's Actions tab, enable workflows (GitHub disables them in a fork).
