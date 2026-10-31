@@ -1,8 +1,8 @@
 # Copyright (c) 2026 GitOps Manager, S.L.
 # SPDX-License-Identifier: Apache-2.0
-# Builds the runner images in images/ (every runner-* folder), smoke-tests
-# each one, pushes it, and prunes old versions. images/README.md says what
-# each image is for and how to bump or add a tool.
+# Builds the runner image in images/runner (and a fork's images/runner-*
+# folders), smoke-tests each one, pushes it, and prunes old versions.
+# images/README.md says what the image is for and how to bump or add a tool.
 #
 # Published to GHCR, at ghcr.io/<repo owner>. Each image is built by
 # build-image.yml, the one file a fork replaces to build on its own runners
@@ -70,9 +70,9 @@ jobs:
       # FROM line can drift on a bump, so refuse that here.
       - name: Check every image has the same base
         run: |
-          grep -H '^FROM ghcr.io/actions/actions-runner:' images/runner-*/Dockerfile
-          if [ "$(grep -h '^FROM ghcr.io/actions/actions-runner:' images/runner-*/Dockerfile | sort -u | wc -l)" -ne 1 ]; then
-            echo "::error::images/runner-*/Dockerfile don't all use the same base FROM line"
+          grep -H '^FROM ghcr.io/actions/actions-runner:' images/runner*/Dockerfile
+          if [ "$(grep -h '^FROM ghcr.io/actions/actions-runner:' images/runner*/Dockerfile | sort -u | wc -l)" -ne 1 ]; then
+            echo "::error::images/runner*/Dockerfile don't all use the same base FROM line"
             exit 1
           fi
 
@@ -87,7 +87,7 @@ jobs:
           fi
           # The image list is here once; the build and summary jobs read it.
           images=""
-          for d in images/runner-*/; do images="$images\"$(basename "$d")\","; done
+          for d in images/runner*/; do images="$images\"$(basename "$d")\","; done
           images="[${images%,}]"
           {
             echo "build=$build"
@@ -153,13 +153,13 @@ jobs:
         run: |
           set -euo pipefail
           # Only the base line; the rest of the line (" AS image") stays.
-          line() { grep -h '^FROM ghcr.io/actions/actions-runner:' images/runner-*/Dockerfile | awk '{print $2}' | sort -u; }
+          line() { grep -h '^FROM ghcr.io/actions/actions-runner:' images/runner*/Dockerfile | awk '{print $2}' | sort -u; }
           current="FROM $(line)"
           if [ "$current" = "FROM $BASE" ]; then
             echo "Already on $BASE."
             exit 0
           fi
-          for f in images/runner-*/Dockerfile; do
+          for f in images/runner*/Dockerfile; do
             sed -i -E "s|^FROM ghcr\.io/actions/actions-runner:[^ ]+|FROM $BASE|" "$f"
           done
           [ "$(line)" = "$BASE" ] || { echo "::error::A Dockerfile's base FROM line was not updated"; exit 1; }

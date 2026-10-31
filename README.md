@@ -13,21 +13,19 @@ GHCR as `ghcr.io/gitopsmanager/<image>`. Part of
 > are never patched once published, so move to the newest release at least
 > monthly ([Security](#security-use-the-newest-release)).
 
-One image per cloud, for every workflow there: long ones that can take many
-minutes, such as creating a cluster with OpenTofu or installing with Helm, and
-short commands from the GUI on an always-on runner.
+**One image, `runner`, for every workflow on every cloud:** long ones that
+can take many minutes, such as creating a cluster with OpenTofu or installing
+with Helm, and short commands from the GUI on an always-on runner. It carries
+the AWS, Azure and Google Cloud CLIs, so every runner set, on any cloud, pins
+the same image and digest.
 
-| Image | For |
-|---|---|
-| `runner-aws` | AWS |
-| `runner-azure` | Azure |
-| `runner-gcp` | Google Cloud |
+Most of it is GitHub's runner base (about 520 MB compressed: the runner agent
+with its .NET and Node runtimes, Docker, Ubuntu and git). The shared tools add
+about 175 MB and the three clouds' CLIs about 265 MB, as downloaded. One
+image per cloud would save under 200 MB, and a lighter one for short commands
+alone under 10%, so there is one.
 
-Most of each image is GitHub's runner base (about 540 MB to download of 700 to
-800); the tools add the rest. A lighter image for short commands alone saved
-under 10%, so there is one per cloud.
-
-What is in each, the pins and how they are checked, the build schedule and
+What is in it, the pins and how they are checked, the build schedule and
 tagging: [images/README.md](images/README.md). The build:
 [`build-runner-images.yml`](.github/workflows/build-runner-images.yml), which
 builds each image with [`build-image.yml`](.github/workflows/build-image.yml).
@@ -53,9 +51,8 @@ workflows run on them, in your own accounts. See
 To subscribe you need to be signed in to AWS Marketplace with the AWS account
 you want to buy from; the subscription is billed to that account.
 
-Use the images, build on them, but don't change them, and don't reuse their
-names (`runner-aws`, `runner-azure`, `runner-gcp`) for images of your own: the
-service expects what is in them. Everything below adds to them without
+Use the image, build on it, but don't change it, and don't reuse its name
+(`runner`) for an image of your own: the service expects what is in it. Everything below adds to them without
 touching them.
 
 ### Fork this repo, and add your own
@@ -80,7 +77,7 @@ A fork rebuilds on our schedule, on the same base, so yours keep up with ours.
 
    | To | Add |
    |---|---|
-   | Add a tool to one of our images | its name to `images/<image>/tools.local` |
+   | Add a tool to our image | its name to `images/runner/tools.local` |
    | Define a tool we don't have | a recipe, `images/local/tools/<tool>.tool` ([format](images/common/tools/README.md)) |
    | Pin its version | `images/local/versions.env` (read after ours) |
    | Add an Ubuntu package | a recipe with `TYPE=apt`, `PACKAGES="name=version"` (a version in the pinned snapshot) |
@@ -90,16 +87,15 @@ A fork rebuilds on our schedule, on the same base, so yours keep up with ours.
 4. **Run it:** Actions → build-runner-images → Run workflow. After that it
    runs on the same schedule as ours.
 
-**A runner image of your own**, for example `runner-client-ci` with .NET
-added. Three files, made from the repo root:
+**A runner image of your own**, for example a lean AWS-only `runner-client-ci`
+with .NET added. Three files, made from the repo root:
 
 ```bash
-# 1. The image's folder, with a copy of one of our Dockerfiles. The copy names
-#    its own folder in its bind mount, so rename that (and its comment) to the
-#    new folder.
+# 1. The image's folder, with a copy of our Dockerfile. The copy names its own
+#    folder in its bind mount (source=runner,), so point that at the new folder.
 mkdir images/runner-client-ci
-cp images/runner-aws/Dockerfile images/runner-client-ci/
-sed -i 's/runner-aws/runner-client-ci/' images/runner-client-ci/Dockerfile
+cp images/runner/Dockerfile images/runner-client-ci/
+sed -i 's/source=runner,/source=runner-client-ci,/' images/runner-client-ci/Dockerfile
 
 # 2. Its tools file: the tools to install, by recipe name, separated by spaces
 #    or new lines. Each name needs a recipe: ours in images/common/tools/
@@ -130,7 +126,7 @@ the image's `licenses/dotnet/`, and its smoke test runs `dotnet --version` and
 looks for `9.0.100`. Every recipe needs its licence (`LICENSE_*`): the build
 stops without one.
 
-Every `images/runner-*` folder is built, so that becomes
+`images/runner` and every `images/runner-*` folder are built, so that becomes
 `ghcr.io/<your org>/runner-client-ci`. Point an ARC runner set at it by
 digest.
 

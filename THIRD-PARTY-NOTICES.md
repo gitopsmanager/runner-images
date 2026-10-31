@@ -4,10 +4,10 @@
 This repository is Apache 2.0 ([LICENSE](LICENSE)). The images it builds also
 contain other people's software, unmodified, each under its own licence.
 Versions are the pins in [`images/common/versions.env`](images/common/versions.env)
-and the base digest in each Dockerfile; each recipe in
+and the base digest in the Dockerfile; each recipe in
 [`images/common/tools/`](images/common/tools/) gives the exact download.
 
-**Inside each image:** every tool's licence text is in
+**Inside the image:** every tool's licence text is in
 `/usr/local/share/gom/licenses/<tool>/`, with an index of the tools, their
 versions, licences and sources in `/usr/local/share/gom/licenses/README.md`.
 The base image's Ubuntu packages keep theirs in
@@ -15,21 +15,21 @@ The base image's Ubuntu packages keep theirs in
 
 | Component | In | Licence | Source |
 |---|---|---|---|
-| GitHub Actions runner image (`ghcr.io/actions/actions-runner`) and the runner agent | all images (the base) | MIT | https://github.com/actions/runner |
-| Ubuntu 24.04 and its packages | all images (from the base) | various; each package's terms are in `/usr/share/doc/<package>/copyright` in the image | https://ubuntu.com |
-| OpenTofu | all images | MPL-2.0 | https://github.com/opentofu/opentofu |
-| kubectl (Kubernetes) | all images | Apache-2.0 | https://github.com/kubernetes/kubernetes |
-| Helm | all images | Apache-2.0 | https://github.com/helm/helm |
-| kustomize | all images | Apache-2.0 | https://github.com/kubernetes-sigs/kustomize |
-| yq | all images | MIT | https://github.com/mikefarah/yq |
-| crane (go-containerregistry) | `runner-aws` | Apache-2.0 | https://github.com/google/go-containerregistry |
-| AWS CLI v2 | `runner-aws` | Apache-2.0 (its bundled components' licences ship in its install folder, `/usr/local/aws-cli`) | https://github.com/aws/aws-cli |
-| Azure CLI | `runner-azure` | MIT | https://github.com/Azure/azure-cli |
-| kubelogin | `runner-azure` | MIT | https://github.com/Azure/kubelogin |
-| Google Cloud CLI | `runner-gcp` | Apache-2.0 (its own terms and bundled components: `/usr/share/google-cloud-sdk/LICENSE`, `/usr/share/doc/google-cloud-cli/copyright`) | https://cloud.google.com/sdk |
-| gke-gcloud-auth-plugin | `runner-gcp` | Apache-2.0 | https://cloud.google.com/sdk |
-| Python 3 | all images | PSF-2.0 (Ubuntu package) | https://www.python.org |
-| PyYAML | all images | MIT (Ubuntu package) | https://github.com/yaml/pyyaml |
+| GitHub Actions runner image (`ghcr.io/actions/actions-runner`) and the runner agent | `runner` (the base) | MIT | https://github.com/actions/runner |
+| Ubuntu 24.04 and its packages | `runner` (from the base) | various; each package's terms are in `/usr/share/doc/<package>/copyright` in the image | https://ubuntu.com |
+| OpenTofu | `runner` | MPL-2.0 | https://github.com/opentofu/opentofu |
+| kubectl (Kubernetes) | `runner` | Apache-2.0 | https://github.com/kubernetes/kubernetes |
+| Helm | `runner` | Apache-2.0 | https://github.com/helm/helm |
+| kustomize | `runner` | Apache-2.0 | https://github.com/kubernetes-sigs/kustomize |
+| yq | `runner` | MIT | https://github.com/mikefarah/yq |
+| crane (go-containerregistry) | `runner` | Apache-2.0 | https://github.com/google/go-containerregistry |
+| AWS CLI v2 | `runner` | Apache-2.0 (its bundled components' licences ship in its install folder, `/usr/local/aws-cli`) | https://github.com/aws/aws-cli |
+| Azure CLI | `runner` | MIT | https://github.com/Azure/azure-cli |
+| kubelogin | `runner` | MIT | https://github.com/Azure/kubelogin |
+| Google Cloud CLI | `runner` | Apache-2.0 (its own terms and bundled components: `/usr/share/google-cloud-sdk/LICENSE`, `/usr/share/doc/google-cloud-cli/copyright`) | https://cloud.google.com/sdk |
+| gke-gcloud-auth-plugin | `runner` | Apache-2.0 | https://cloud.google.com/sdk |
+| Python 3 | `runner` | PSF-2.0 (Ubuntu package) | https://www.python.org |
+| PyYAML | `runner` | MIT (Ubuntu package) | https://github.com/yaml/pyyaml |
 
 **OpenTofu (MPL-2.0):** included unmodified, as released; its source is at the
 link above for the version in `versions.env`.

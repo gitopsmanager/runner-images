@@ -1,0 +1,9 @@
+# Copyright (c) 2026 GitOps Manager, S.L.
+# SPDX-License-Identifier: Apache-2.0
+# The tools in runner, by recipe name (common/tools/<name>.tool): every
+# cloud's, so one image serves AWS, Azure and Google Cloud.
+# To add tools in a fork, list them in tools.local beside this file instead.
+tofu kubectl helm kustomize yq crane python3 pyyaml
+awscli
+azure-cli kubelogin
+gcloud gke-gcloud-auth-plugin

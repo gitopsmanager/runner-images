@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Builds, tests and pushes ONE image. Called by build-runner-images.yml once
-# per images/runner-* folder; everything else -- the schedule, the base
+# per images/runner* folder; everything else -- the schedule, the base
 # update, the tag, the release -- is that workflow's.
 #
 # Two ways to build, by the repository variable BUILD_IMAGE:

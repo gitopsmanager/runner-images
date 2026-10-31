@@ -7,44 +7,45 @@ built and pushed to GHCR by
 one image at a time through
 [`build-image.yml`](../.github/workflows/build-image.yml).
 
-> **Status: not yet built in GitHub Actions.** The pins and checksums were
-> checked against the release files and the installer was run locally (see
-> [Tested](#tested)); the first run of the workflow is the first build.
-
 | Image | Runs on | Tools |
 |---|---|---|
-| `runner-aws` | CodeBuild (long workflows), ARC (GUI commands) | OpenTofu, AWS CLI v2, kubectl, Helm, kustomize, yq, crane, python3 + PyYAML |
-| `runner-azure` | Container Apps jobs (long workflows), ARC (GUI commands) | OpenTofu, Azure CLI, kubelogin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
-| `runner-gcp` | Not chosen yet | OpenTofu, Google Cloud CLI, gke-gcloud-auth-plugin, kubectl, Helm, kustomize, yq, python3 + PyYAML |
+| `runner` | Every cloud: CodeBuild (long AWS workflows), Container Apps jobs (long Azure workflows), ARC on EKS, AKS and GKE (GUI commands) | OpenTofu, kubectl, Helm, kustomize, yq, crane, python3 + PyYAML; AWS CLI v2; Azure CLI, kubelogin; Google Cloud CLI, gke-gcloud-auth-plugin |
 
-One image per cloud serves every workflow there: long ones (OpenTofu creates,
-Helm installs) and short commands from the GUI (AddHock) on an always-on
-runner. There used to be a lighter image for the short commands, without
-OpenTofu and Helm; it saved under 10%, because GitHub's runner base is most of
-each image (about 540 MB of 700 to 800 MB to download), so it went.
+**One image serves every workflow on every cloud:** long ones (OpenTofu
+creates, Helm installs) and short commands from the GUI (AddHock) on an
+always-on runner.
+- **Why not one per cloud.** There were three, and before that six (a lighter
+  one for short commands, per cloud). GitHub's runner base is most of the
+  image (about 520 MB compressed); each cloud's CLI is 70 to 110 MB to
+  download. All three in one costs under 200 MB over the largest single-cloud
+  image, pulled once per node, and saves a choice of image in every runner set.
+- **The cost:** every runner carries two clouds' CLIs it doesn't use. What a
+  runner can do is set by its identity, not by the tools installed.
+- **A lean image** for one cloud is a fork's own `images/runner-<name>/` with
+  its own `tools` file (repo README, "Your own images").
 
-Every image also has jq, git, curl, unzip and bash from the base image. The
-exact list is each image's `tools` file.
+It also has jq, git, curl, unzip and bash from the base image. The exact list
+is its `tools` file.
 
 ## The base
 
-Every image is built on the official GitHub Actions runner image,
+The image is built on the official GitHub Actions runner image,
 `ghcr.io/actions/actions-runner`, pinned by tag **and** digest. That gives
-Ubuntu 24.04, the non-root user `runner` (uid 1001) the images run as, and
+Ubuntu 24.04, the non-root user `runner` (uid 1001) the image runs as, and
 the runner agent.
 
 - **CodeBuild** brings its own runner agent and ignores this one.
 - **Container Apps jobs** and ARC use the one in the image.
 
-The same base is used for all of them so there's one toolchain to keep
-current. The workflow fails if their base `FROM` lines differ.
+A fork's own images (`runner-*`) use the same base, so there's one toolchain
+to keep current. The workflow fails if their base `FROM` lines differ.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
 | `<image>/Dockerfile` | The base pin; the install; the smoke-test stage |
-| `<image>/tools` | The tools in that image, by recipe name |
+| `<image>/tools` | The tools in that image, by recipe name (ours: `runner/tools`) |
 | `common/tools/<tool>.tool` | **How each tool is installed**: where from, what kind of file, how to check it. Format: [`common/tools/README.md`](common/tools/README.md) |
 | `common/versions.env` | **Every tool version and SHA256**, with where each checksum came from |
 | `common/install-tools.sh` | Runs the recipes: downloads, checks each SHA256, installs system-wide, writes `/usr/local/share/gom/tools.txt`, and puts each tool's licence text in `/usr/local/share/gom/licenses/` |
@@ -110,7 +111,7 @@ release named by its date, with each image's digest in its notes and in
 
 ```bash
 gh release download --repo gitopsmanager/runner-images --pattern images.json
-docker pull ghcr.io/gitopsmanager/runner-aws@sha256:<digest from images.json>
+docker pull ghcr.io/gitopsmanager/runner@sha256:<digest from images.json>
 ```
 
 or put the same `image@sha256:...` reference in the CodeBuild project, the
@@ -144,7 +145,7 @@ release, at least monthly.
    the new version.
 
 **A new tool:** a recipe in `common/tools/`, its pins in `versions.env`, and
-its name in the `tools` file of each image that should have it.
+its name in `runner/tools`.
 
 **Ubuntu packages:** move `UBUNTU_SNAPSHOT` forward, and update
 `PYTHON3_DEB_VERSION` and `PYYAML_DEB_VERSION` to the versions in that
@@ -168,11 +169,12 @@ and change the base `FROM` line in **every** Dockerfile.
 
 ## First run: things to check
 
-- **The packages start out private.** The first push creates the GHCR
-  packages. If clients should pull without credentials, make each one public
-  in its package settings.
+- **The package starts out private.** The first push creates the GHCR
+  package. Clients pull without credentials, so make it public in its package
+  settings (Change visibility). Do the same again if the package is ever
+  deleted: its settings go with it.
 - **Pruning needs the repo to have admin on each package.** The source label
-  in each Dockerfile links the package to this repo. If the prune step fails
+  in the Dockerfile links the package to this repo. If the prune step fails
   with a 403, add this repo under the package's "Manage Actions access" with
   the Admin role.
 - **`main` must let github-actions push**: the base update commits and tags.
@@ -214,6 +216,9 @@ and change the base `FROM` line in **every** Dockerfile.
   the build (exit 2).
 
 **Not tested:**
+- The single `runner` image (31 Oct 2026, replacing `runner-aws`,
+  `runner-azure` and `runner-gcp`): all three clouds' tools in one install,
+  until the next build. Each recipe was built in one of the three before.
 - The licence copies for the `deb`, `apt` and `script` tools (the packages'
   `copyright` files, the AWS CLI's), until the next build.
 - Pruning, until there are more than six versions.
