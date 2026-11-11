@@ -50,3 +50,8 @@ Examples: [`kubectl.tool`](kubectl.tool) (`bin`), [`helm.tool`](helm.tool)
 (`tar`), [`kubelogin.tool`](kubelogin.tool) (`zip`),
 [`gcloud.tool`](gcloud.tool) (`deb`), [`python3.tool`](python3.tool) (`apt`),
 [`awscli.tool`](awscli.tool) (`script`).
+
+Python packages from PyPI are pinned the same way: [`capture.tool`](capture.tool)
+installs from [`capture-requirements.txt`](capture-requirements.txt), every
+package at an exact version with its sha256, with `pip install
+--require-hashes --no-deps --only-binary=:all:`.

@@ -17,7 +17,6 @@ The base image's Ubuntu packages keep theirs in
 |---|---|---|---|
 | GitHub Actions runner image (`ghcr.io/actions/actions-runner`) and the runner agent | `runner` (the base) | MIT | https://github.com/actions/runner |
 | Ubuntu 24.04 and its packages | `runner` (from the base) | various; each package's terms are in `/usr/share/doc/<package>/copyright` in the image | https://ubuntu.com |
-| OpenTofu | `runner` | MPL-2.0 | https://github.com/opentofu/opentofu |
 | kubectl (Kubernetes) | `runner` | Apache-2.0 | https://github.com/kubernetes/kubernetes |
 | Helm | `runner` | Apache-2.0 | https://github.com/helm/helm |
 | kustomize | `runner` | Apache-2.0 | https://github.com/kubernetes-sigs/kustomize |
@@ -30,9 +29,6 @@ The base image's Ubuntu packages keep theirs in
 | gke-gcloud-auth-plugin | `runner` | Apache-2.0 | https://cloud.google.com/sdk |
 | Python 3 | `runner` | PSF-2.0 (Ubuntu package) | https://www.python.org |
 | PyYAML | `runner` | MIT (Ubuntu package) | https://github.com/yaml/pyyaml |
-
-**OpenTofu (MPL-2.0):** included unmodified, as released; its source is at the
-link above for the version in `versions.env`.
 
 **A fork's own tools** (`images/local/tools/`) are under their own licences:
 whoever adds a tool adds its line to their copy of this file.

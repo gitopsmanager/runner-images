@@ -1,0 +1,12 @@
+# Copyright (c) 2026 GitOps Manager, S.L.
+# SPDX-License-Identifier: Apache-2.0
+# The runner image's tools (runner/tools), plus capture-libs: python3-venv
+# and the libraries and fonts Playwright's Chromium needs. The capture tools
+# themselves (Playwright and the Python Kubernetes client the agent's State of
+# World reads use, core-stack tools/stateofworld_agent.py) are in
+# tools.capture: a second install-tools.sh run, once these packages are in.
+kubectl helm kustomize yq crane python3 pyyaml
+awscli
+azure-cli kubelogin
+gcloud gke-gcloud-auth-plugin
+capture-libs

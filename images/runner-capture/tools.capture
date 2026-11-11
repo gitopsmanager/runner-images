@@ -1,0 +1,6 @@
+# Copyright (c) 2026 GitOps Manager, S.L.
+# SPDX-License-Identifier: Apache-2.0
+# The capture tools, installed in the Dockerfile's second install-tools.sh
+# run: capture.tool needs python3-venv (capture-libs, in tools) already
+# installed, and install-tools.sh installs packages only at the end of a run.
+capture

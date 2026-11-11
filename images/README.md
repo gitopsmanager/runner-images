@@ -9,9 +9,10 @@ one image at a time through
 
 | Image | Runs on | Tools |
 |---|---|---|
-| `runner` | Every cloud: CodeBuild (long AWS workflows), Container Apps jobs (long Azure workflows), ARC on EKS, AKS and GKE (GUI commands) | OpenTofu, kubectl, Helm, kustomize, yq, crane, python3 + PyYAML; AWS CLI v2; Azure CLI, kubelogin; Google Cloud CLI, gke-gcloud-auth-plugin |
+| `runner` | Every cloud: CodeBuild (long AWS workflows), Container Apps jobs (long Azure workflows), ARC on EKS, AKS and GKE (GUI commands) | kubectl, Helm, kustomize, yq, crane, python3 + PyYAML; AWS CLI v2; Azure CLI, kubelogin; Google Cloud CLI, gke-gcloud-auth-plugin |
+| `runner-capture` | The images runners (`gom-<cloud>-images`, 0 to 10 per cloud): State of World captures | Everything in `runner`, plus Playwright with Chromium and the Python Kubernetes client (`capture-libs`, `capture`) |
 
-**One image serves every workflow on every cloud:** long ones (OpenTofu
+**One image serves every workflow on every cloud:** long ones (cluster
 creates, Helm installs) and short commands from the GUI (AddHock) on an
 always-on runner.
 - **Why not one per cloud.** There were three, and before that six (a lighter
@@ -66,7 +67,7 @@ on a self-hosted runner with no Docker daemon.
 
 ## How the pins work
 
-- **Release binaries** (OpenTofu, kubectl, Helm, kustomize, yq, crane,
+- **Release binaries** (kubectl, Helm, kustomize, yq, crane,
   kubelogin, the AWS CLI) are downloaded from the project's own release URL,
   at an exact version, and refused unless the SHA256 matches `versions.env`.
 - **The Azure CLI and the Google Cloud CLI** `.deb`s are fetched from the
@@ -144,6 +145,17 @@ release, at least monthly.
 3. Run the workflow. The build's smoke test fails if the image doesn't report
    the new version.
 
+**The capture tools (`runner-capture`):** three things move together.
+1. `PLAYWRIGHT_VERSION` (and the other capture versions) in `versions.env`.
+2. The `playwright` stage's `FROM` line in `runner-capture/Dockerfile`:
+   Microsoft's image for the same version, `v<version>-noble`, by tag and
+   index digest (as for the base image below, from
+   `https://mcr.microsoft.com/v2/playwright/python/manifests/v<version>-noble`;
+   no token needed). The build fails if its browsers aren't that version's.
+3. `common/tools/capture-requirements.txt`, regenerated as its header says,
+   and `capture-libs.tool`'s package lists, compared with Playwright's
+   `nativeDeps.ts` at the new tag.
+
 **A new tool:** a recipe in `common/tools/`, its pins in `versions.env`, and
 its name in `runner/tools`.
 
@@ -194,7 +206,7 @@ and change the base `FROM` line in **every** Dockerfile.
 
 - **The Google Cloud CLI and GKE plugin `.deb`s** were downloaded from
   Google's pool, and both matched the SHA256 in Google's Packages index.
-- **The recipe installer**, run with a scratch `GOM_PREFIX`: tofu, kubectl,
+- **The recipe installer**, run with a scratch `GOM_PREFIX`: kubectl,
   Helm, kustomize, yq, crane (`tar` and `bin` recipes) and kubelogin (`zip`)
   were downloaded, checked and installed, and `tools.txt` was written with
   each recipe's check. Lists with comments, an absent `--list-if-present`

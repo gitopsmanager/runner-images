@@ -1,7 +1,7 @@
 # Copyright (c) 2026 GitOps Manager, S.L.
 # SPDX-License-Identifier: Apache-2.0
 # runner: every workflow, on AWS, Azure and Google Cloud, on one image: long
-# ones (OpenTofu creates, Helm installs) and short GUI commands (AddHock), on
+# ones (cluster creates, Helm installs) and short GUI commands (AddHock), on
 # CodeBuild, Container Apps jobs or ARC. All three clouds' CLIs are in it, so
 # one image, one digest, serves every runner.
 #

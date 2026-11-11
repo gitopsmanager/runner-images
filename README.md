@@ -2,7 +2,7 @@
 # runner-images
 
 Container images for self-hosted GitHub Actions runners on EKS, AKS and GKE,
-with AWS, Azure and Google Cloud toolsets (OpenTofu, the cloud CLIs, kubectl,
+with AWS, Azure and Google Cloud toolsets (the cloud CLIs, kubectl,
 Helm) pinned and checksum-verified, rebuilt on a schedule and published to
 GHCR as `ghcr.io/gitopsmanager/<image>`. Part of
 [GitOps Manager](https://gitopsmanager.io).
@@ -14,7 +14,7 @@ GHCR as `ghcr.io/gitopsmanager/<image>`. Part of
 > monthly ([Security](#security-use-the-newest-release)).
 
 **One image, `runner`, for every workflow on every cloud:** long ones that
-can take many minutes, such as creating a cluster with OpenTofu or installing
+can take many minutes, such as creating a cluster or installing
 with Helm, and short commands from the GUI on an always-on runner. It carries
 the AWS, Azure and Google Cloud CLIs, so every runner set, on any cloud, pins
 the same image and digest.
